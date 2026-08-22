@@ -1,92 +1,78 @@
 <?php
+global $product;
+$product_id = $product->get_id();
+$displays = redq_rental_get_settings($product_id, 'display');
+$general = redq_rental_get_settings($product_id, 'general');
+$labels = redq_rental_get_settings($product_id, 'labels', array('rfq_form'));
+$labels = $labels['labels'];
+$show_quote = $displays['display']['rfq'];
+$user_pass = $general['general']['rfq_user_pass'];
+$gdpr_text = $general['general']['gdpr_text'];
+$gdpr_page = $general['general']['gdpr_page'];
 
-if (!defined('ABSPATH')) {
-    exit;
-}
+if ($show_quote === 'open') {
+    $customer_first_name = '';
+    $customer_last_name = '';
+    $customer_phone = '';
+    $customer_email = '';
+    if (is_user_logged_in()) {
+        global $current_user;
+        $customer_first_name = get_user_meta($current_user->ID, 'billing_first_name', true);
+        $customer_last_name = get_user_meta($current_user->ID, 'billing_last_name', true);
+        $customer_phone = get_user_meta($current_user->ID, 'billing_phone', true);
+        $customer_email = get_user_meta($current_user->ID, 'billing_email', true);
+    } ?>
+    <button id="quote-content-confirm" class="redq_request_for_a_quote btn-book-now button"><?php echo esc_html($product->single_request_for_quote_text()); ?></button>
 
-$my_quotes_columns = apply_filters('woocommerce_my_account_my_orders_columns', array(
-    'quote-number'  => __('Order', 'woocommerce'),
-    'quote-date'    => __('Date', 'woocommerce'),
-    'quote-status'  => __('Status', 'woocommerce'),
-    'quote-total'   => __('Total', 'woocommerce'),
-    'quote-actions' => '&nbsp;',
-));
+    <div id="quote-popup" class="rnb-popup mfp-hide">
+        <?php if (!is_user_logged_in() && $user_pass === 'no') : ?>
+            <p>
+                <span><?php echo $labels['username_title']; ?></span>
+                <input type="text" name="quote-username" id="quote-username" placeholder="<?php echo $labels['username']; ?>" value="" required="true" />
+            </p>
+            <p>
+                <span><?php echo $labels['password_title']; ?></span>
+                <input type="password" name="quote-password" id="quote-password" placeholder="<?php echo $labels['password']; ?>" value="" required="true" />
+            </p>
+        <?php endif ?>
 
-// $customer_quotes = get_posts(apply_filters('redq_my_account_my_quote_query', array(
-//     // 'numberposts' => 3, //$order_count,
-//     'paged'       => $current_page,
-//     // 'meta_key'    => '_quote_user',
-//     // 'meta_value'  => get_current_user_id(),
-//     'author'        =>  get_current_user_id(),
-//     'post_type'   => 'request_quote',
-//     'post_status' => array('quote-pending', 'quote-processing', 'quote-on-hold', 'quote-accepted', 'quote-completed', 'quote-cancelled')
-// )));
+        <p>
+            <span><?php echo $labels['first_name_title']; ?></span>
+            <input type="text" name="quote-first-name" id="quote-first-name" placeholder="<?php echo $labels['first_name']; ?>" value="<?php echo esc_attr($customer_first_name) ?>" required="true" />
+        </p>
+        <p>
+            <span><?php echo $labels['last_name_title']; ?></span>
+            <input type="text" name="quote-last-name" id="quote-last-name" placeholder="<?php echo $labels['last_name']; ?>" value="<?php echo esc_attr($customer_last_name) ?>" required="true" />
+        </p>
+        <p>
+            <span><?php echo $labels['email_title']; ?></span>
+            <input type="email" name="quote-email" id="quote-email" placeholder="<?php echo $labels['email']; ?>" value="<?php echo esc_attr($customer_email) ?>" required="true" />
+        </p>
+        <p>
+            <span><?php echo $labels['phone_title']; ?></span>
+            <input type="text" name="quote-phone" id="quote-phone" placeholder="<?php echo $labels['phone']; ?>" value="<?php echo esc_attr($customer_phone) ?>" required="true" />
+        </p>
+        <p>
+            <span><?php echo $labels['message_title']; ?></span>
+            <textarea name="quote-message" id="quote-message" placeholder="<?php echo $labels['message']; ?>"></textarea>
+        </p>
 
-$customer_quotes = new WP_Query(apply_filters('redq_my_account_my_quote_query', array(
-    'posts_per_page' => get_option('posts_per_page'), //$order_count,
-    'paged'          => $current_page,
-    'author'         => get_current_user_id(),
-    'post_type'      => 'request_quote',
-    'post_status'    => array('quote-pending', 'quote-processing', 'quote-on-hold', 'quote-accepted', 'quote-completed', 'quote-cancelled')
-)));
-?>
-
-
-<table class="shop_table shop_table_responsive my_account_orders">
-    <thead>
-        <tr>
-            <?php foreach ($my_quotes_columns as $column_id => $column_name) : ?>
-                <th class="<?php echo esc_attr($column_id); ?>"><span class="nobr"><?php echo esc_html($column_name); ?></span></th>
-            <?php endforeach; ?>
-        </tr>
-    </thead>
-
-    <tbody>
-        <?php if ( $customer_quotes->have_posts() ) : while ( $customer_quotes->have_posts() ) : $customer_quotes->the_post(); ?>
-            <tr class="order">
-                <?php foreach ($my_quotes_columns as $column_id => $column_name) : ?>
-                    <td class="<?php echo esc_attr($column_id); ?>" data-title="<?php echo esc_attr($column_name); ?>" <?php echo ($column_id === 'quote-actions') ? 'style="text-align: right;"' : ''; ?>>
-                        <?php if (has_action('redq_my_account_my_quotes_column_' . $column_id)) : ?>
-                            <?php do_action('redq_my_account_my_quotes_column_' . $column_id, $order); ?>
-
-                        <?php elseif ('quote-number' === $column_id) : ?>
-                            <a href="<?php echo esc_url(redq_get_view_quote_url(get_the_ID())); ?>">
-                                <?php echo _x('#', 'hash before order number', 'redq-rental') . get_the_ID(); ?>
-                            </a>
-
-                        <?php elseif ('quote-date' === $column_id) : ?>
-                            <time datetime="<?php echo date('Y-m-d', strtotime(get_the_date())); ?>" title="<?php echo esc_attr(strtotime(get_the_date())); ?>"><?php echo date_i18n(get_option('date_format'), strtotime(get_the_date())); ?></time>
-
-                        <?php elseif ('quote-status' === $column_id) : ?>
-                            <?php echo redq_get_quote_status_name(get_post_status()); ?>
-
-                        <?php elseif ('quote-total' === $column_id) : ?>
-                            <span class="woocommerce-Price-amount amount">
-                                <?php echo wc_price(get_post_meta(get_the_ID(), '_quote_price', true)); ?>
-                            </span>
-                            <?php esc_html_e('for 1 items', 'redq-rental') ?>
-                        <?php elseif ('quote-actions' === $column_id) :
-
-                            echo '<a href="' . esc_url(redq_get_view_quote_url(get_the_ID())) . '" class="button view">' . esc_html('view', 'redq-rental') . '</a>';
-
-                        endif; ?>
-                    </td>
-                <?php endforeach; ?>
-            </tr>
-        <?php wp_reset_postdata(); ?>
-        <?php endwhile; ?>
-        <?php endif; ?>
-    </tbody>
-</table>
-
-<?php if ( 1 < $customer_quotes->max_num_pages ) : ?>
-    <div class="woocommerce-pagination woocommerce-pagination--without-numbers woocommerce-Pagination">
-        <?php if ( 1 !== $current_page ) : ?>
-            <a class="woocommerce-button woocommerce-button--previous woocommerce-Button woocommerce-Button--previous button" href="<?php echo esc_url( wc_get_endpoint_url( 'request-quote', $current_page - 1 ) ); ?>"><?php esc_html_e( 'Previous', 'redq-rental' ); ?></a>
+        <?php if (is_gdpr_enable($product_id)) : ?>
+            <p>
+                <label class="rnb-gdpr-checkbox-field" for="accept_gdpr">
+                    <input type="checkbox" name="accept_gdpr" id="accept_gdpr" required="true">
+                    <span class="rnb-gdpr-checkbox-field-text">
+                        <?php echo $gdpr_text; ?> <a href="<?php echo get_the_permalink($gdpr_page); ?>"><?php echo get_the_title($gdpr_page); ?></a>
+                    </span>
+                </label>
+            </p>
         <?php endif; ?>
 
-        <?php if ( intval( $customer_quotes->max_num_pages ) !== $current_page ) : ?>
-            <a class="woocommerce-button woocommerce-button--next woocommerce-Button woocommerce-Button--next button" href="<?php echo esc_url( wc_get_endpoint_url( 'request-quote', $current_page + 1 ) ); ?>"><?php esc_html_e( 'Next', 'redq-rental' ); ?></a>
-        <?php endif; ?>
+        <p>
+            <button class="quote-submit"><?php echo $labels['submit_button']; ?><i class="fas fa-spinner fa-pulse fa-fw"></i></button>
+        </p>
+        <div class="quote-modal-message"></div>
     </div>
-<?php endif; ?>
+
+<?php
+} ?>
