@@ -83,10 +83,13 @@ if (!empty($pickup_time)) {
 } elseif ($current_period->startOfDay()->greaterThan($pickup_period->startOfDay())) {
     $errors[] = $labels['invalid_range_notice'];
 }
-
-        if ($pickup_period->greaterThan($return_period)) {
-            $errors[] = $labels['invalid_range_notice'];
-        }
+if (empty($pickup_time) && empty($return_time)) {
+    if ($pickup_period->startOfDay()->greaterThan($return_period->startOfDay())) {
+        $errors[] = $labels['invalid_range_notice'];
+    }
+} elseif ($pickup_period->greaterThan($return_period)) {
+    $errors[] = $labels['invalid_range_notice'];
+}
 
         $holidays = redq_rental_handle_holidays($product_id);
         $is_holiday = $this->check_dates_against_holidays($args, $holidays, $conditions);
