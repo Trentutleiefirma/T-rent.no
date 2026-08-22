@@ -76,9 +76,14 @@ trait Error_Trait
         $current_period = (new Carbon())->addHours($offset);
         $pickup_period  = new Carbon($args['pickup_date'] . $pickup_time);
         $return_period  = new Carbon($return_date . $return_time);
-
-        if ($current_period->greaterThan($pickup_period)) {
-            $errors[] =  $labels['invalid_range_notice'];
+if (!empty($pickup_time)) {
+    if ($current_period->greaterThan($pickup_period)) {
+        $errors[] = $labels['invalid_range_notice'];
+    }
+} elseif ($current_period->startOfDay()->greaterThan($pickup_period->startOfDay())) {
+    $errors[] = $labels['invalid_range_notice'];
+}
+        
         }
 
         if ($pickup_period->greaterThan($return_period)) {
