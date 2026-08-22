@@ -83,8 +83,6 @@ if (!empty($pickup_time)) {
 } elseif ($current_period->startOfDay()->greaterThan($pickup_period->startOfDay())) {
     $errors[] = $labels['invalid_range_notice'];
 }
-        
-        }
 
         if ($pickup_period->greaterThan($return_period)) {
             $errors[] = $labels['invalid_range_notice'];
