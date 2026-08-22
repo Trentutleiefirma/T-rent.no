@@ -1,0 +1,46 @@
+{
+  "name": "RnB Add-ons",
+  "description": "Extend Your Booking Features With RnB Add-ons",
+  "data": [
+    {
+      "title": "RnB Seasonal Pricing (Add-ons)",
+      "url": "https://1.envato.market/RXrPX",
+      "image_url": "https://s3.amazonaws.com/redqteam.com/TF/seasonal-pricing-addons-banner.png",
+      "subtitle": "Extension of <strong>WooCommerce Rental & Booking Plugin</strong>",
+      "description": "The Seasonal pricing add-on allows you to charge promotional/seasonal pricing for specific date range of any rental product. This enables admin to configure pricing very easily based on different criteria. This is a simple and easy to use add-on perfect for your business if your price changes for peak and off-peak season.",
+      "demo_url": "https://redqteam.com/rnb/shop/seasonal-pricing/"
+    },
+    {
+      "title": "RnB Backend Booking (Add-ons)",
+      "url": "https://1.envato.market/ORnzaK",
+      "image_url": "https://s3.amazonaws.com/redqteam.com/TF/rnb-backend-booking.png",
+      "subtitle": "Extension of <strong>WooCommerce Rental & Booking Plugin</strong>",
+      "description": "R&B Backend Booking is an extension of WooCommerce and WooCommerce Rental & Booking plugin. It allows admin to create a rental order from WordPress admin. It provides all the features that is available in RnB front-end booking plugin. This plugin will help admin to create both online and offline booking business.",
+      "demo_url": "https://preview.redq.io/rnb/rnb-backend-booking/"
+    },
+    {
+      "title": "RnB Extend Order (Add-ons)",
+      "url": "https://codecanyon.net/item/rnb-extend-order-addon/edit/35055291",
+      "image_url": "https://s3.amazonaws.com/redqteam.com/TF/rnb-extend-order.png",
+      "subtitle": "Extension of <strong>WooCommerce Rental & Booking Plugin</strong>",
+      "description": "R&B extend order plugin is an extension of WooCommerce and RnB. It allows customer to extend a rental order from wooCommerce my account page. This plugin will help customer to extend their existing booking depending on its availability, it is super easy to install and setup. Customer will able to extend a rental order for cars, bike, dress, tools, gadgets, etc. ",
+      "demo_url": "https://preview.redq.io/rnb/rnb-extend-order/"
+    },
+    {
+      "title": "Cartsy - WooCommerce WordPress Theme",
+      "url": "https://redq.io/cartsy",
+      "image_url": "https://s3.amazonaws.com/redqteam.com/TF/cartsy-addons-banner.png",
+      "subtitle": "WordPress Theme build on the top of <strong>WooCommerce</strong>",
+      "description": "Create your online shop with our fully functional WordPress E-commerce. Cartsy is a highly intuitive WooCommerce theme that will handle all your online business needs. Start selling anything and everything today.",
+      "demo_url": "https://redq.io/cartsy"
+    },
+    {
+      "title": "Turbo - WooCommerce Rental & Booking Theme",
+      "url": "https://1.envato.market/NKzXeP",
+      "image_url": "https://s3.amazonaws.com/redqteam.com/TF/cartsy-addons-banner.png",
+      "subtitle": "WordPress Theme Build on the top of <strong>WooCommerce Rental & Booking Plugin",
+      "description": "Turbo is an user-friendly car booking WordPress theme alternatively, car rental WordPress theme crafted with , WooCommerce booking plugin, visual composer, and multilingual.This theme allows you to book or rent your date-based or time-based car booking. It creates a new product type to your WooCommerce site. Perfect for those wanting to offer rental or booking.",
+      "demo_url": "https://redq.io/turbowp"
+    }
+  ]
+}
