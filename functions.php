@@ -171,6 +171,39 @@ function rnb_get_default_pickup_time($product_id, $form_data = [])
     }
 
     $conditions = redq_rental_get_settings($product_id, 'conditions')['conditions'];
+
+    $offset = (float) get_option('gmt_offset');
+    $today = (new Carbon())->addHours($offset);
+
+    $current_date = $today->toDateString();
+    $pickup_date  = (new Carbon($form_data['pickup_date']))->toDateString();
+
+    // For future dates there is no need to calculate a time from "now".
+    if ($current_date !== $pickup_date) {
+        return '00:00';
+    }
+
+    $interval = isset($conditions['time_interval']) && (int) $conditions['time_interval'] > 0
+        ? (int) $conditions['time_interval']
+        : 30;
+
+    // Find the next valid interval after the current time.
+    $minutes_since_midnight = ($today->hour * 60) + $today->minute;
+
+    $next_minutes = ceil(($minutes_since_midnight + 1) / $interval) * $interval;
+
+    // Do not allow a time outside the current day.
+    if ($next_minutes >= 24 * 60) {
+        return '23:59';
+    }
+
+    $hour = floor($next_minutes / 60);
+    $minute = $next_minutes % 60;
+
+    return sprintf('%02d:%02d', $hour, $minute);
+}
+
+    $conditions = redq_rental_get_settings($product_id, 'conditions')['conditions'];
     $display = redq_rental_get_settings($product_id, 'display')['display'];
 
     $offset = (float) get_option('gmt_offset');
