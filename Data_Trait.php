@@ -132,7 +132,16 @@ trait Data_Trait
     {
         $pickupPeriod = new Carbon($args['pickup_date'] . ' ' . $args['pickup_time']);
         $returnPeriod = new Carbon($args['return_date'] . ' ' . $args['return_time']);
-        $duration = rnb_get_duration($pickupPeriod, $returnPeriod);
+
+        // RnB's duration helper can return an empty duration when pickup and
+        // return are the same calendar date. This site uses calendar-day
+        // rentals, so a same-day selection is a valid one-day rental.
+        $is_same_day = $pickupPeriod->isSameDay($returnPeriod);
+        $duration = $is_same_day ? [
+            'duration' => 24,
+            'days' => 1,
+            'hours' => 0
+        ] : rnb_get_duration($pickupPeriod, $returnPeriod);
 
         if (empty($duration)) {
             return false;
