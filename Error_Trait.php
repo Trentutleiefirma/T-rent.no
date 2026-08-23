@@ -71,6 +71,19 @@ trait Error_Trait
         $return_date_obj = Carbon::createFromFormat('Y-m-d', $return_date)->startOfDay();
         $current_date = Carbon::now()->startOfDay();
 
+        // Normalize same-day bookings before date validation and duration checks.
+        // handle_form() is also called again during checkout, so this must run here.
+        if ($pickup_date->isSameDay($return_date_obj)) {
+            $args['pickup_date'] = $pickup_date->toDateString();
+            $args['return_date'] = $pickup_date->toDateString();
+            $args['dropoff_date'] = $pickup_date->toDateString();
+            $args['actual_hours'] = 24;
+            $args['days'] = 1;
+            $args['flat_hours'] = 24;
+            $return_date = $args['return_date'];
+            $return_date_obj = $pickup_date->copy();
+        }
+
         if ($pickup_date->lessThan($current_date) || $pickup_date->greaterThan($return_date_obj)) {
             $errors[] = $labels['invalid_range_notice'];
         }
