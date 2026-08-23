@@ -50,6 +50,19 @@ function rnb_get_duration($start, $end)
 
     $mins      = $start->floatDiffInRealMinutes($end);
     $durations = $mins / 60;
+
+    $start_date = $start->copy()->startOfDay();
+    $end_date   = $end->copy()->startOfDay();
+
+    // T-Rent uses calendar days. Same pickup and return date is one full day.
+    if ($start_date->isSameDay($end_date)) {
+        return [
+            'duration' => 24,
+            'days'     => 1,
+            'hours'    => 0,
+        ];
+    }
+
     $day       = intval($mins / (24 * 60));
     $hour      = (int) ceil($mins % (24 * 60) / 60);
 
