@@ -50,11 +50,21 @@ function rnb_get_duration($start, $end)
 
     $mins      = $start->floatDiffInRealMinutes($end);
     $durations = $mins / 60;
-    $day       = intval($mins / (24 * 60));
-    $hour      = (int) ceil($mins % (24 * 60) / 60);
+
+    // RnB is configured for calendar-day rental pricing. When the selected
+    // pickup and return dates are different, both dates must count as rental
+    // days. For example 24/08-25/08 = 2 days, not 1 day (24 hours).
+    $startDate = $start->copy()->startOfDay();
+    $endDate   = $end->copy()->startOfDay();
+    $day       = $startDate->diffInDays($endDate);
+
+    if ($startDate->notEqualTo($endDate)) {
+        $day += 1;
+    }
+
+    $hour = (int) ceil($mins % (24 * 60) / 60);
 
     if ($hour >= 24) {
-        $day = $day + 1;
         $hour = $hour - 24;
     }
 
