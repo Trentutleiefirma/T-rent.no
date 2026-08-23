@@ -177,10 +177,11 @@ trait Data_Trait
         $hours = ceil($duration['hours']);
 
         // Day-based rental: pickup and return on the same calendar date is
-        // one rental day, regardless of the selected/default times.
+        // always one rental day. RnB can otherwise calculate 0 hours.
         if ($pickupPeriod->isSameDay($returnPeriod)) {
-            $totalHours = 24;
+            $actual_hours = 24;
             $days = 1;
+            $totalHours = 24;
             $hours = 0;
         }
 
