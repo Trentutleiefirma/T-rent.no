@@ -11,6 +11,7 @@ class DepositManager
     public function __construct()
     {
         add_action('init', [$this, 'ensure_deposit_product'], 20);
+        add_action('woocommerce_cart_calculate_fees', [$this, 'remove_rnb_deposit_fee'], 1);
         add_action('woocommerce_review_order_before_order_total', [$this, 'render_deposit_selector']);
         add_action('woocommerce_cart_totals_before_order_total', [$this, 'render_deposit_selector']);
         add_action('wp_footer', [$this, 'render_deposit_script']);
@@ -20,6 +21,20 @@ class DepositManager
         add_filter('woocommerce_get_cart_item_from_session', [$this, 'restore_cart_item'], 99, 2);
         add_action('woocommerce_before_calculate_totals', [$this, 'set_deposit_price'], 99);
         add_action('woocommerce_checkout_create_order_line_item', [$this, 'add_order_item_meta'], 20, 4);
+    }
+
+    public function remove_rnb_deposit_fee()
+    {
+        global $wp_filter;
+        if (empty($wp_filter['woocommerce_cart_calculate_fees']->callbacks)) return;
+        foreach ($wp_filter['woocommerce_cart_calculate_fees']->callbacks as $priority => $callbacks) {
+            foreach ($callbacks as $callback) {
+                $function = isset($callback['function']) ? $callback['function'] : null;
+                if (is_array($function) && isset($function[0], $function[1]) && is_object($function[0]) && $function[1] === 'add_deposit_total_as_fee' && $function[0] instanceof CartHandler) {
+                    remove_action('woocommerce_cart_calculate_fees', $function, $priority);
+                }
+            }
+        }
     }
 
     public function ensure_deposit_product()
