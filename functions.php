@@ -51,16 +51,12 @@ function rnb_get_duration($start, $end)
     $mins      = $start->floatDiffInRealMinutes($end);
     $durations = $mins / 60;
 
-    // RnB is configured for calendar-day rental pricing. When the selected
-    // pickup and return dates are different, both dates must count as rental
-    // days. For example 24/08-25/08 = 2 days, not 1 day (24 hours).
+    // RnB is configured for calendar-day rental pricing.
+    // Same calendar day is always one rental day.
+    // Different dates are inclusive: 24/08-25/08 = 2 days.
     $startDate = $start->copy()->startOfDay();
     $endDate   = $end->copy()->startOfDay();
-    $day       = $startDate->diffInDays($endDate);
-
-    if ($startDate->notEqualTo($endDate)) {
-        $day += 1;
-    }
+    $day       = $startDate->diffInDays($endDate) + 1;
 
     $hour = (int) ceil($mins % (24 * 60) / 60);
 
@@ -213,47 +209,6 @@ function rnb_get_default_pickup_time($product_id, $form_data = [])
     return sprintf('%02d:%02d', $hour, $minute);
 }
 
-    $conditions = redq_rental_get_settings($product_id, 'conditions')['conditions'];
-    $display = redq_rental_get_settings($product_id, 'display')['display'];
-
-    $offset = (float) get_option('gmt_offset');
-    $today = (new Carbon())->addHours($offset);
-
-    $current_date = $today->toDateString();
-    $pickup_date = (new Carbon($form_data['pickup_date']))->toDateString();
-
-    if ($current_date !== $pickup_date) {
-        return '00:00';
-    }
-
-    $slots = [];
-    $interval = isset($conditions['time_interval']) && $conditions['time_interval'] ? $conditions['time_interval'] : 30;
-
-    for ($i = 1; $i <= 60; $i++) {
-        if ($i % $interval === 0) {
-            $slots[]  = $i;
-        }
-    }
-
-    $hour = $today->hour;
-
-    foreach ($slots as $key => $slot) {
-        $min = $slot;
-        if ($slot === 60) {
-            $hour = $hour + 1;
-            $min = 0;
-        }
-        $custom = "$current_date $hour:$min";
-        $customObject = new Carbon($custom);
-
-        if ($customObject->greaterThan($today)) {
-            return $customObject->format('H:i');
-        }
-    }
-
-    return (Carbon::now())->format('H:i');
-}
-
 /**
  * Default return time
  *
@@ -268,7 +223,6 @@ function rnb_get_default_return_time($product_id, $form_data = [])
     }
 
     $conditions = redq_rental_get_settings($product_id, 'conditions')['conditions'];
-    $display = redq_rental_get_settings($product_id, 'display')['display'];
 
     $offset = (float) get_option('gmt_offset');
     $today = (new Carbon())->addHours($offset);
@@ -298,7 +252,7 @@ function rnb_get_default_return_time($product_id, $form_data = [])
 
 /**
  * Parse weekend into init value
- * 
+ *
  * @param  array $weekend
  * @return array
  */
@@ -367,7 +321,6 @@ function rnb_check_dates_overlap($args1, $args2)
     return $period->overlaps($period_2);
 }
 
-
 // add_filter('woocommerce_product_class', 'load_custom_product_class', 10, 2);
 function load_custom_product_class($classname, $product_type)
 {
@@ -379,42 +332,23 @@ function load_custom_product_class($classname, $product_type)
 }
 
 if (!function_exists('is_view_quote_page')) {
-
-    /**
-     * Is_view_quote_page - Returns true when on the view order page.
-     *
-     * @return bool
-     */
     function is_view_quote_page()
     {
         global $wp;
-
         $page_id = wc_get_page_id('myaccount');
-
         return ($page_id && is_page($page_id) && isset($wp->query_vars['view-quote']));
     }
 }
 
 if (!function_exists('is_rfq_page')) {
-
-    /**
-     * Is_rfq_page - Returns true when on the view order page.
-     *
-     * @return bool
-     */
     function is_rfq_page()
     {
         global $wp;
-
         $page_id = wc_get_page_id('myaccount');
-
         return ($page_id && is_page($page_id) && isset($wp->query_vars['view-quote'])) || ($page_id && is_page($page_id) && isset($wp->query_vars['request-quote']));
     }
 }
 
-/**
- * Retrieve Instance payment type
- */
 function rnb_get_instance_payment_type()
 {
     $instance_payment_type = get_option('rnb_instance_payment_type');
@@ -428,9 +362,7 @@ function rnb_convert_dates_in_common_format($dates)
         return [];
     }
 
-    $formatted_dates = array_map(function ($date) {
+    return array_map(function ($date) {
         return Carbon::parse($date)->format('Y-m-d');
     }, $dates);
-
-    return $formatted_dates;
 }
