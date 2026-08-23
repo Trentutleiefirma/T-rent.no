@@ -44,6 +44,22 @@ trait Data_Trait
             $formData['return_date'] = $formData['pickup_date'];
         }
 
+        // T-Rent uses calendar-day rentals. Keep same-day bookings explicitly
+        // as the same calendar date before handle_form() validates the range.
+        if (!empty($formData['pickup_date']) && !empty($formData['return_date'])) {
+            $pickup = Carbon::parse($formData['pickup_date'])->startOfDay();
+            $return = Carbon::parse($formData['return_date'])->startOfDay();
+            if ($pickup->isSameDay($return)) {
+                $same_day = $pickup->toDateString();
+                $formData['pickup_date'] = $same_day;
+                $formData['return_date'] = $same_day;
+                $formData['dropoff_date'] = $same_day;
+                $formData['actual_hours'] = 24;
+                $formData['days'] = 1;
+                $formData['flat_hours'] = 24;
+            }
+        }
+
         if (isset($formData['post_type']) && $formData['post_type'] === 'shop_order') {
             if (!isset($formData['pickup_time']) || empty($formData['pickup_time'])) {
                 $formData['pickup_time'] = rnb_get_default_pickup_time($product_id, $formData);
@@ -133,9 +149,6 @@ trait Data_Trait
         $pickupPeriod = new Carbon($args['pickup_date'] . ' ' . $args['pickup_time']);
         $returnPeriod = new Carbon($args['return_date'] . ' ' . $args['return_time']);
 
-        // RnB's duration helper can return an empty duration when pickup and
-        // return are the same calendar date. This site uses calendar-day
-        // rentals, so a same-day selection is a valid one-day rental.
         $is_same_day = $pickupPeriod->isSameDay($returnPeriod);
         $duration = $is_same_day ? [
             'duration' => 24,
@@ -176,8 +189,6 @@ trait Data_Trait
         $days = $duration['days'];
         $hours = ceil($duration['hours']);
 
-        // Day-based rental: pickup and return on the same calendar date is
-        // always one rental day. RnB can otherwise calculate 0 hours.
         if ($pickupPeriod->isSameDay($returnPeriod)) {
             $actual_hours = 24;
             $days = 1;
