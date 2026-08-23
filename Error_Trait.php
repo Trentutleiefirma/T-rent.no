@@ -9,13 +9,9 @@ use Carbon\Carbon;
  */
 trait Error_Trait
 {
-    /**
-     * If checkout failed during an AJAX call, send failure response.
-     */
     public function send_ajax_failure_response()
     {
         if (is_ajax()) {
-            // only print notices if not reloading the checkout, otherwise they're lost in the page reload
             if (!isset(WC()->session->reload_checkout)) {
                 ob_start();
                 wc_print_notices();
@@ -30,17 +26,10 @@ trait Error_Trait
             );
 
             unset(WC()->session->refresh_totals, WC()->session->reload_checkout);
-
             wp_send_json($response);
         }
     }
 
-    /**
-     * Check errors for form data
-     *
-     * @param array $args
-     * @return array
-     */
     public function handle_form($args = [], $checkout = false)
     {
         $errors = [];
@@ -65,45 +54,33 @@ trait Error_Trait
         }
 
         $conditions = redq_rental_get_settings($product_id, 'conditions')['conditions'];
-        $labels     = redq_rental_get_settings($product_id, 'labels', ['notice'])['labels'];
+        $labels = redq_rental_get_settings($product_id, 'labels', ['notice'])['labels'];
 
-        $pickup_time = isset($args['pickup_time']) ? $args['pickup_time'] : '';
-        $return_date = isset($args['return_date']) ? $args['return_date'] : $args['pickup_date'];
-        $return_time = isset($args['return_time']) ? $args['return_time'] : '';
+        $return_date = isset($args['return_date']) && !empty($args['return_date'])
+            ? $args['return_date']
+            : $args['pickup_date'];
         $booking_quantity = isset($args['inventory_quantity']) ? $args['inventory_quantity'] : 1;
 
-        $offset = (float) get_option('gmt_offset');
-        $current_period = (new Carbon())->addHours($offset);
+        /*
+         * T-Rent uses calendar days, not clock hours.
+         * Validate the dates only. This deliberately does not compare pickup
+         * and return times, so a same-day booking such as 23/08 -> 23/08 is
+         * valid. 24/08 -> 25/08 remains two rental days.
+         */
+        $pickup_date = Carbon::createFromFormat('Y-m-d', $args['pickup_date'])->startOfDay();
+        $return_date_obj = Carbon::createFromFormat('Y-m-d', $return_date)->startOfDay();
+        $current_date = Carbon::now()->startOfDay();
 
-        // Build the datetimes explicitly. This is important for same-day
-        // bookings: 2026-08-24 + 10:00 must be parsed as 10:00 on 24/08,
-        // not as an ambiguous concatenated date/time string.
-        $pickup_period = new Carbon(
-            $args['pickup_date'] . (!empty($pickup_time) ? ' ' . $pickup_time : '')
-        );
-        $return_period = new Carbon(
-            $return_date . (!empty($return_time) ? ' ' . $return_time : '')
-        );
-
-        // A booking on today's date is only invalid when its pickup time has
-        // already passed. A future same-day rental (pickup_date === return_date)
-        // is valid and must not be rejected merely because the dates are equal.
-        if (!empty($pickup_time)) {
-            if ($current_period->greaterThan($pickup_period)) {
-                $errors[] = $labels['invalid_range_notice'];
-            }
-        } elseif ($current_period->copy()->startOfDay()->greaterThan($pickup_period->copy()->startOfDay())) {
-            $errors[] = $labels['invalid_range_notice'];
-        }
-
-        // Same-day bookings are valid. Only reject the range when the actual
-        // pickup datetime is after the return datetime.
-        if ($pickup_period->greaterThan($return_period)) {
+        if ($pickup_date->lessThan($current_date) || $pickup_date->greaterThan($return_date_obj)) {
             $errors[] = $labels['invalid_range_notice'];
         }
 
         $holidays = redq_rental_handle_holidays($product_id);
-        $is_holiday = $this->check_dates_against_holidays($args, $holidays, $conditions);
+        $is_holiday = $this->check_dates_against_holidays(
+            array_merge($args, ['return_date' => $return_date]),
+            $holidays,
+            $conditions
+        );
         if ($is_holiday) {
             $errors[] = esc_html__('Sorry! pickup or return is not possible in holidays', 'redq-rental');
         }
@@ -152,7 +129,6 @@ trait Error_Trait
             }
         }
 
-        // Category validation
         $categories = isset($args['categories']) ? $args['categories'] : null;
         $has_category_errors = $this->category_validation($categories);
         if (!empty($has_category_errors)) {
@@ -161,7 +137,6 @@ trait Error_Trait
             }
         }
 
-        // Deposit validation
         if (isset($args['order_type']) && $args['order_type'] !== 'extend_order') {
             $form_deposits = isset($args['security_deposites']) ? $args['security_deposites'] : null;
             $has_deposit_errors = $this->deposit_validation($inventory_id, $form_deposits);
@@ -173,12 +148,6 @@ trait Error_Trait
         return $errors;
     }
 
-    /**
-     * Data validation during checkout
-     *
-     * @param array $cart_items
-     * @return array
-     */
     public function handle_checkout_items($cart_items)
     {
         $results = [];
@@ -192,8 +161,6 @@ trait Error_Trait
                 continue;
             }
 
-            $conditions = redq_rental_get_settings($product_id, 'conditions');
-            $conditions = $conditions['conditions'];
             $rental_data = $cart_item['rental_data'];
             $errors[$product_id] = $this->handle_form($rental_data['posted_data'], true);
         }
@@ -237,6 +204,7 @@ trait Error_Trait
     public function category_validation($categories)
     {
         $results = [];
+
         if (empty($categories) || !is_array($categories)) {
             return $results;
         }
@@ -296,6 +264,7 @@ trait Error_Trait
                 return true;
             }
         }
+
         return false;
     }
 
@@ -325,28 +294,70 @@ trait Error_Trait
         $fields = [];
 
         if ($validations['pickup_location'] === 'open') {
-            $fields[] = ['selector' => "select[name='pickup_location']", 'message' => $messages['pickup_loc_required'], 'titleTag' => 'h5'];
+            $fields[] = [
+                'selector' => "select[name='pickup_location']",
+                'message' => $messages['pickup_loc_required'],
+                'titleTag' => 'h5',
+            ];
         }
+
         if ($validations['return_location'] === 'open') {
-            $fields[] = ['selector' => "select[name='dropoff_location']", 'message' => $messages['dropoff_loc_required'], 'titleTag' => 'h5'];
+            $fields[] = [
+                'selector' => "select[name='dropoff_location']",
+                'message' => $messages['dropoff_loc_required'],
+                'titleTag' => 'h5',
+            ];
         }
+
         if ($validations['person'] === 'open') {
-            $fields[] = ['selector' => "select[name='additional_adults_info']", 'message' => $messages['adult_required'], 'titleTag' => 'h5'];
+            $fields[] = [
+                'selector' => "select[name='additional_adults_info']",
+                'message' => $messages['adult_required'],
+                'titleTag' => 'h5',
+            ];
         }
+
         if ($validations['pickup_time'] === 'open') {
-            $fields[] = ['selector' => "input[name='pickup_time']", 'message' => $messages['pickup_time_required'], 'titleTag' => 'h5'];
+            $fields[] = [
+                'selector' => "input[name='pickup_time']",
+                'message' => $messages['pickup_time_required'],
+                'titleTag' => 'h5',
+            ];
         }
+
         if ($validations['return_time'] === 'open') {
-            $fields[] = ['selector' => "input[name='dropoff_time']", 'message' => $messages['dropoff_time_required'], 'titleTag' => 'h5'];
+            $fields[] = [
+                'selector' => "input[name='dropoff_time']",
+                'message' => $messages['dropoff_time_required'],
+                'titleTag' => 'h5',
+            ];
         }
+
         if (isset($validations['resource']) && $validations['resource'] === 'open') {
-            $fields[] = ['selector' => "input[name='extras[]']", 'message' => $messages['resource_required'], 'checkboxGroup' => true, 'titleTag' => 'h5'];
+            $fields[] = [
+                'selector' => "input[name='extras[]']",
+                'message' => $messages['resource_required'],
+                'checkboxGroup' => true,
+                'titleTag' => 'h5',
+            ];
         }
+
         if (isset($validations['category']) && $validations['category'] === 'open') {
-            $fields[] = ['selector' => "input[name='categories[]']", 'message' => $messages['resource_required'], 'checkboxGroup' => true, 'titleTag' => 'h5'];
+            $fields[] = [
+                'selector' => "input[name='categories[]']",
+                'message' => $messages['resource_required'],
+                'checkboxGroup' => true,
+                'titleTag' => 'h5',
+            ];
         }
+
         if (isset($validations['deposit']) && $validations['deposit'] === 'open') {
-            $fields[] = ['selector' => "input[name='security_deposites[]']", 'message' => $messages['deposit_required'], 'checkboxGroup' => true, 'titleTag' => 'h5'];
+            $fields[] = [
+                'selector' => "input[name='security_deposites[]']",
+                'message' => $messages['deposit_required'],
+                'checkboxGroup' => true,
+                'titleTag' => 'h5',
+            ];
         }
 
         return apply_filters('rnb_validate_fields', $fields, $validations, $messages, $product_id);
