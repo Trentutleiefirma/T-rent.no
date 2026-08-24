@@ -32,12 +32,11 @@
         </span>
     <?php endif; ?>
 
-    <?php if (isset($displays['return_time']) && $displays['return_time'] !== 'closed') : ?>
-        <span class="drop-off-time-picker">
-            <i class="fas fa-clock"></i>
-            <input type="text" name="dropoff_time" id="dropoff-time" placeholder="<?php echo esc_attr($labels['return_time']); ?>" value="" readonly>
-        </span>
-    <?php endif; ?>
+    <?php // T-Rent: return time is required on every RnB rental product. ?>
+    <span class="drop-off-time-picker">
+        <i class="fas fa-clock"></i>
+        <input type="text" name="dropoff_time" id="dropoff-time" placeholder="<?php echo esc_attr($labels['return_time']); ?>" value="" readonly>
+    </span>
 
     <?php do_action('rnb_after_return_datetime'); ?>
 
