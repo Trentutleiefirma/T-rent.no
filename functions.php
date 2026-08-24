@@ -23,8 +23,9 @@ function rnb_generalized_date_format($date, $euro_format)
 
 /**
  * T-Rent rents by calendar day, not elapsed hours.
- * Same date = 1 day; consecutive dates = 1 day; each additional
- * calendar date adds one day. Clock time is kept separately for overlap checks.
+ * Same date = 1 rental day. Each additional calendar date adds one rental day.
+ * Exception: pickup between 19:00 and 21:00 on the previous calendar date
+ * is treated as free evening-before pickup when the booking spans exactly one date boundary.
  */
 function rnb_get_duration($start, $end)
 {
@@ -45,19 +46,26 @@ function rnb_get_duration($start, $end)
         return $defaults;
     }
 
-    $mins = max(0, $start->floatDiffInRealMinutes($end));
-    $durations = $mins / 60;
-    $days = max(1, $start_date->diffInDays($end_date));
-    $hours = (int) ceil($mins % (24 * 60) / 60);
+    $calendar_diff = (int) $start_date->diffInDays($end_date);
+    $days = $calendar_diff + 1;
 
-    if ($hours >= 24) {
-        $hours -= 24;
+    // Free evening-before pickup applies only to pickup time, only for one date boundary.
+    $pickup_time = $start->format('H:i');
+    if (
+        $calendar_diff === 1 &&
+        $pickup_time >= '19:00' &&
+        $pickup_time <= '21:00'
+    ) {
+        $days = 1;
     }
 
+    // RnB expects duration internally in hours.
+    $duration = 24 * $days;
+
     return wp_parse_args([
-        'duration' => $durations,
+        'duration' => $duration,
         'days'     => $days,
-        'hours'    => $hours,
+        'hours'    => 0,
     ], $defaults);
 }
 
@@ -134,7 +142,6 @@ function rnb_get_day_of_dow()
 
 /**
  * T-Rent default pickup: opening time for the selected day.
- * Same-day bookings are no longer forced to the current clock time.
  */
 function rnb_get_default_pickup_time($product_id, $form_data = [])
 {
@@ -179,9 +186,8 @@ function rnb_get_time_slots($interval = 30, $format = 'H:i')
 }
 
 /**
- * Availability is checked using the actual pickup/dropoff datetimes.
- * Exact handover is not considered an overlap: one rental may end at the
- * exact moment the next rental starts.
+ * Availability is checked using actual pickup/dropoff datetimes.
+ * Exact handover is not considered an overlap.
  */
 function rnb_check_dates_overlap($args1, $args2)
 {
