@@ -23,8 +23,9 @@ function rnb_generalized_date_format($date, $euro_format)
 
 /**
  * T-Rent rents by calendar day, not elapsed hours.
- * Same date = 1 day; consecutive dates = 1 day; each additional
- * calendar date adds one day. Clock time is kept separately for overlap checks.
+ * Same date = 1 rental day; consecutive dates = 1 rental day;
+ * each additional calendar date adds one rental day.
+ * Clock times are intentionally ignored for rental duration.
  */
 function rnb_get_duration($start, $end)
 {
@@ -45,19 +46,19 @@ function rnb_get_duration($start, $end)
         return $defaults;
     }
 
-    $mins = max(0, $start->floatDiffInRealMinutes($end));
-    $durations = $mins / 60;
-    $days = max(1, $start_date->diffInDays($end_date));
-    $hours = (int) ceil($mins % (24 * 60) / 60);
+    // T-Rent pricing is based on calendar dates, never elapsed hours.
+    // Same-day booking is one day; each additional calendar date adds one day.
+    $days = max(1, (int) $start_date->diffInDays($end_date));
 
-    if ($hours >= 24) {
-        $hours -= 24;
-    }
+    // RnB expects duration/flat_hours in hours internally.
+    // Represent each rental day as exactly 24 hours while keeping the
+    // billable unit in days via the separate $days value.
+    $duration = 24 * $days;
 
     return wp_parse_args([
-        'duration' => $durations,
+        'duration' => $duration,
         'days'     => $days,
-        'hours'    => $hours,
+        'hours'    => 0,
     ], $defaults);
 }
 
