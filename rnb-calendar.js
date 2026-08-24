@@ -51,11 +51,10 @@ jQuery(document).ready(function ($) {
     } else {
       const dateObj = new Date(calendarDate);
       selectedDay = dateObj.getDay();
-      selectedDate = dateObj.getDate(); 
+      selectedDate = dateObj.getDate();
       selectedMonth = dateObj.getMonth();
     }
 
-    // Checking for todays min time - only if same month and date
     const getToday = currentDateTime.getDay();
     const todayMinTime =
       conditional_data.time_format === '24-hours'
@@ -71,14 +70,12 @@ jQuery(document).ready(function ($) {
           });
 
     if (currentDateTime.getDate() === selectedDate && currentMonth === selectedMonth) {
-      // Deep copy the object right before it is modified
       const opening_closing_copy = JSON.parse(
         JSON.stringify(validation_data.openning_closing)
       );
       opening_closing_copy[weekDaysAra[getToday]].min = todayMinTime;
       return [selectedDay, opening_closing_copy];
     } else {
-      // Return the original data without modification
       return [selectedDay, validation_data.openning_closing];
     }
   };
@@ -110,134 +107,189 @@ jQuery(document).ready(function ($) {
     });
   };
 
-  /**
-   * calendarInit
-   *
-   */
   function calendarInit(CALENDAR_DATA) {
     const conditional_data = CALENDAR_DATA.calendar_props.settings.conditions;
     const general_data = CALENDAR_DATA.calendar_props.settings.general;
     const validation_data = CALENDAR_DATA.calendar_props.settings.validations;
 
-    /**
-     * Configuration of time picker for pickup time
-     *
-     * @since 1.0.0
-     * @return null
-     */
     let opening_closing = validation_data.openning_closing;
     const opening_closing_copy = clone(opening_closing);
 
-    // end new code
+    // T-Rent opening hours apply to every rental product.
+    // Pickup: weekdays 08:00-21:00, weekends 09:00-21:00.
+    // Return: weekdays 08:00-20:00, weekends 09:00-20:00.
+    const parseCalendarDate = function (calendarDate) {
+      if (!calendarDate) {
+        return null;
+      }
 
-    const OpeningClosingTimeLogic = function (currentDateTime) {
-      const pickupDate = $('#pickup-date').val();
-      const results = rnb_handle_time_restriction(
-        conditional_data,
-        validation_data,
-        currentDateTime,
-        pickupDate
-      );
+      const splitDate = calendarDate.split('/');
+      let dateObj;
 
-      const selectedDay = results[0];
-      const opening_closing = results[1];
-
-      console.log(opening_closing, weekDaysAra, selectedDay, 'selected days');
-
-      this.setOptions({
-        minTime:
-          conditional_data.time_format === '24-hours'
-            ? opening_closing[weekDaysAra[selectedDay]].min
-            : timeConvert(opening_closing[weekDaysAra[selectedDay]].min),
-        maxTime:
-          conditional_data.time_format === '24-hours'
-            ? opening_closing[weekDaysAra[selectedDay]].max
-            : timeConvert(opening_closing[weekDaysAra[selectedDay]].max),
-        format: conditional_data.time_format === '24-hours' ? 'H:i' : 'h:i a',
-        formatTime:
-          conditional_data.time_format === '24-hours' ? 'H:i' : 'h:i a',
-      });
-    };
-
-    const DropOffOpeningClosingTimeLogic = function (currentDateTime) {
-      let minsToAdd;
-      let time;
-      const dropoffDate = $('#dropoff-date').val()
-        ? $('#dropoff-date').val()
-        : $('#pickup-date').val();
-      const results = rnb_handle_time_restriction(
-        conditional_data,
-        validation_data,
-        currentDateTime,
-        dropoffDate
-      );
-      const selectedDay = results[0],
-        opening_closing = results[1];
-
-      let minTime;
-
-      if ($('#dropoff-date').length > 0) {
-        if ($('#pickup-date').val() === $('#dropoff-date').val()) {
-          if (
-            $('#pickup-time').val() !== '' &&
-            $('#pickup-time').val() !== '00:00'
-          ) {
-            time = $('#pickup-time').val();
-            minsToAdd = conditional_data.time_interval;
-
-            minTime = new Date(
-              new Date('1970/01/01 ' + time).getTime() + minsToAdd * 60000
-            )
-              .toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                hour12:
-                  conditional_data.time_format === '24-hours' ? false : true,
-                minute: 'numeric',
-              })
-              .replace('AM', 'am')
-              .replace('PM', 'pm');
-          }
+      if (splitDate.length === 3) {
+        if (conditional_data.euro_format === 'yes') {
+          dateObj = new Date(
+            parseInt(splitDate[2], 10),
+            parseInt(splitDate[1], 10) - 1,
+            parseInt(splitDate[0], 10)
+          );
+        } else {
+          dateObj = new Date(
+            parseInt(splitDate[2], 10),
+            parseInt(splitDate[0], 10) - 1,
+            parseInt(splitDate[1], 10)
+          );
         }
       } else {
-        minTime = $('#pickup-time').val();
-        if (
-          $('#pickup-time').val() !== '' &&
-          $('#pickup-time').val() !== '00:00'
-        ) {
-          time = $('#pickup-time').val();
-          minsToAdd = conditional_data.time_interval;
+        dateObj = new Date(calendarDate);
+      }
 
-          minTime = new Date(
-            new Date('1970/01/01 ' + time).getTime() + minsToAdd * 60000
-          )
-            .toLocaleTimeString('en-US', {
-              hour: 'numeric',
-              hour12:
-                conditional_data.time_format === '24-hours' ? false : true,
-              minute: 'numeric',
-            })
-            .replace('AM', 'am')
-            .replace('PM', 'pm');
+      return isNaN(dateObj.getTime()) ? null : dateObj;
+    };
+
+    const isSameLocalDate = function (dateA, dateB) {
+      return (
+        dateA &&
+        dateB &&
+        dateA.getFullYear() === dateB.getFullYear() &&
+        dateA.getMonth() === dateB.getMonth() &&
+        dateA.getDate() === dateB.getDate()
+      );
+    };
+
+    const timeToMinutes = function (time) {
+      if (!time) {
+        return null;
+      }
+
+      const value = time.toString().trim().toLowerCase();
+      const match24 = value.match(/^(\d{1,2}):(\d{2})$/);
+      if (match24) {
+        const hours = parseInt(match24[1], 10);
+        const minutes = parseInt(match24[2], 10);
+        if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+          return hours * 60 + minutes;
         }
       }
 
-      console.log(selectedDay, weekDaysAra, 'de');
+      const match12 = value.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/);
+      if (match12) {
+        let hours = parseInt(match12[1], 10) % 12;
+        const minutes = parseInt(match12[2], 10);
+        if (match12[3] === 'pm') {
+          hours += 12;
+        }
+        return hours * 60 + minutes;
+      }
 
-      this.setOptions({
-        minTime:
-          minTime !== undefined
-            ? minTime
-            : conditional_data.time_format === '24-hours'
-            ? opening_closing[weekDaysAra[selectedDay]].min
-            : timeConvert(opening_closing[weekDaysAra[selectedDay]].min),
-        maxTime:
-          conditional_data.time_format === '24-hours'
-            ? opening_closing[weekDaysAra[selectedDay]].max
-            : timeConvert(opening_closing[weekDaysAra[selectedDay]].max),
+      return null;
+    };
+
+    const minutesTo24HourTime = function (minutes) {
+      const normalized = Math.max(0, Math.min(1439, minutes));
+      const hours = Math.floor(normalized / 60)
+        .toString()
+        .padStart(2, '0');
+      const mins = (normalized % 60).toString().padStart(2, '0');
+      return `${hours}:${mins}`;
+    };
+
+    const formatTRentTime = function (time) {
+      return conditional_data.time_format === '24-hours'
+        ? time
+        : timeConvert(time);
+    };
+
+    const getTRentOpeningMinutes = function (selectedDay) {
+      return selectedDay === 0 || selectedDay === 6 ? 9 * 60 : 8 * 60;
+    };
+
+    const getTRentTimeConfig = function (elementId, currentDateTime) {
+      const isPickup = elementId === '#pickup-time';
+      const calendarDate = isPickup
+        ? $('#pickup-date').val()
+        : ($('#dropoff-date').val() || $('#pickup-date').val());
+      const selectedDate = parseCalendarDate(calendarDate);
+      const selectedDay = selectedDate
+        ? selectedDate.getDay()
+        : currentDateTime.getDay();
+
+      let minMinutes = getTRentOpeningMinutes(selectedDay);
+      const maxMinutes = isPickup ? 21 * 60 : 20 * 60;
+
+      if (selectedDate && isSameLocalDate(selectedDate, currentDateTime)) {
+        const nowMinutes =
+          currentDateTime.getHours() * 60 + currentDateTime.getMinutes();
+        minMinutes = Math.max(minMinutes, nowMinutes);
+      }
+
+      if (!isPickup && $('#pickup-date').val() === $('#dropoff-date').val()) {
+        const pickupMinutes = timeToMinutes($('#pickup-time').val());
+        if (pickupMinutes !== null) {
+          const interval = parseInt(conditional_data.time_interval || 30, 10);
+          minMinutes = Math.max(minMinutes, pickupMinutes + interval);
+        }
+      }
+
+      const allowedByDate = CALENDAR_DATA.allowed_datetime || {};
+      const hasDateSpecificTimes =
+        calendarDate &&
+        Object.prototype.hasOwnProperty.call(allowedByDate, calendarDate);
+      const sourceTimes = hasDateSpecificTimes
+        ? allowedByDate[calendarDate]
+        : conditional_data.allowed_times;
+
+      let filteredTimes = null;
+      if (
+        hasDateSpecificTimes ||
+        (Array.isArray(sourceTimes) && sourceTimes.length > 0)
+      ) {
+        const safeTimes = Array.isArray(sourceTimes) ? sourceTimes : [];
+        filteredTimes = safeTimes.filter(function (time) {
+          const minutes = timeToMinutes(time);
+          return (
+            minutes !== null &&
+            minutes >= minMinutes &&
+            minutes <= maxMinutes
+          );
+        });
+      }
+
+      return {
+        minMinutes: minMinutes,
+        maxMinutes: maxMinutes,
+        filteredTimes: filteredTimes,
+      };
+    };
+
+    const applyTRentTimeOptions = function (picker, elementId, currentDateTime) {
+      const config = getTRentTimeConfig(
+        elementId,
+        currentDateTime instanceof Date ? currentDateTime : new Date()
+      );
+      const options = {
+        minTime: formatTRentTime(minutesTo24HourTime(config.minMinutes)),
+        maxTime: formatTRentTime(minutesTo24HourTime(config.maxMinutes)),
         format: conditional_data.time_format === '24-hours' ? 'H:i' : 'h:i a',
         formatTime:
           conditional_data.time_format === '24-hours' ? 'H:i' : 'h:i a',
-      });
+      };
+
+      if (config.minMinutes > config.maxMinutes) {
+        options.allowTimes = [];
+      } else if (config.filteredTimes !== null) {
+        options.allowTimes = config.filteredTimes;
+      }
+
+      picker.setOptions(options);
+    };
+
+    const OpeningClosingTimeLogic = function (currentDateTime) {
+      applyTRentTimeOptions(this, '#pickup-time', currentDateTime);
+    };
+
+    const DropOffOpeningClosingTimeLogic = function (currentDateTime) {
+      applyTRentTimeOptions(this, '#dropoff-time', currentDateTime);
     };
 
     const onShow = function (ct) {
@@ -250,14 +302,12 @@ jQuery(document).ready(function ($) {
 
     const onSelectDate = function (ct, $i) {
       const allowedTimes = CALENDAR_DATA.allowed_datetime;
+      const selectedDateKey = ct.dateFormat(conditional_data.date_format);
       dateTimeOptions['date'] = ct;
       dropDateTimeOptions['date'] = ct;
-      if (
-        allowedTimes[ct.dateFormat(conditional_data.date_format)] !== undefined
-      ) {
-        if (
-          allowedTimes[ct.dateFormat(conditional_data.date_format)].length === 0
-        ) {
+
+      if (allowedTimes[selectedDateKey] !== undefined) {
+        if (allowedTimes[selectedDateKey].length === 0) {
           ['#pickup-time', '#dropoff-time'].forEach((elementId) => {
             $(elementId).datetimepicker({
               datepicker: false,
@@ -266,14 +316,41 @@ jQuery(document).ready(function ($) {
           });
         } else {
           ['#pickup-time', '#dropoff-time'].forEach((elementId) => {
+            const isPickup = elementId === '#pickup-time';
+            const minMinutes = getTRentOpeningMinutes(ct.getDay());
+            const maxMinutes = isPickup ? 21 * 60 : 20 * 60;
+            const now = new Date();
+            let effectiveMin = minMinutes;
+
+            if (isSameLocalDate(ct, now)) {
+              effectiveMin = Math.max(
+                effectiveMin,
+                now.getHours() * 60 + now.getMinutes()
+              );
+            }
+
+            const filteredTimes = allowedTimes[selectedDateKey].filter(
+              function (time) {
+                const minutes = timeToMinutes(time);
+                return (
+                  minutes !== null &&
+                  minutes >= effectiveMin &&
+                  minutes <= maxMinutes
+                );
+              }
+            );
+
             $(elementId).datetimepicker({
               datepicker: false,
               format:
                 conditional_data.time_format === '24-hours' ? 'H:i' : 'h:i a',
               formatTime:
                 conditional_data.time_format === '24-hours' ? 'H:i' : 'h:i a',
-              allowTimes:
-                allowedTimes[ct.dateFormat(conditional_data.date_format)],
+              allowTimes: filteredTimes,
+              onShow:
+                isPickup
+                  ? OpeningClosingTimeLogic
+                  : DropOffOpeningClosingTimeLogic,
             });
           });
         }
@@ -301,9 +378,6 @@ jQuery(document).ready(function ($) {
     };
 
     let offDays = [];
-    /**
-     * Configure weekend
-     */
     if (conditional_data.weekends !== undefined) {
       const offDaysLength = conditional_data.weekends.length;
       for (let i = 0; i < offDaysLength; i++) {
@@ -315,23 +389,11 @@ jQuery(document).ready(function ($) {
       general_data.lang_domain !== false ? general_data.lang_domain : 'en';
     $.datetimepicker.setLocale(domain);
 
-    /**
-     * Configuration of date picker for pickup date
-     *
-     * @since 1.0.0
-     * @return null
-     */
     $('#pickup-date').change(function (e) {
       $('#pickup-time').val('');
       $('#dropoff-time').val('');
     });
 
-    /**
-     * Configuration of time picker for dropoff date
-     *
-     * @since 1.0.0
-     * @return null
-     */
     $('#dropoff-date').change(function (e) {
       $('#dropoff-time').val('');
     });
@@ -385,9 +447,6 @@ jQuery(document).ready(function ($) {
       dropDatepickerOption,
       {
         inline: true,
-        // onSelectDate: function(ct) {
-        //   dropDateTimeOptions['date'] = ct;
-        // },
         disabledWeekDays: offDays,
         onSelectTime: function (ct) {
           dropDateTimeOptions['time'] = ct;
@@ -404,9 +463,11 @@ jQuery(document).ready(function ($) {
       };
       const mobilePickupTimeOptions = Object.assign({}, mobileTimeOptions, {
         value: dateTimeOptions['time'],
+        onShow: OpeningClosingTimeLogic,
       });
       const mobileDropoffTimeOptions = Object.assign({}, mobileTimeOptions, {
         value: dropDateTimeOptions['time'],
+        onShow: DropOffOpeningClosingTimeLogic,
       });
       const elementIds = {
         pickup: {
@@ -427,7 +488,6 @@ jQuery(document).ready(function ($) {
 
       $('#pickup-date').datetimepicker('destroy');
 
-      //Start
       $('#pickup-date').on('click', function () {
         $(elementIds.pickup.modalBodyId).show();
         $('#mobile-datepicker').datetimepicker(mobilePickupDatePickerOptions);
@@ -440,9 +500,7 @@ jQuery(document).ready(function ($) {
         );
       });
 
-      //dropoff
       $('#dropoff-date').on('click', function () {
-        const minDate = $('#pickup-date').val() ? $('#pickup-date').val() : 0;
         $(elementIds.dropoff.modalBodyId).show();
         $('#drop-mobile-datepicker').datetimepicker(
           mobileDropoffDatePickerOptions
@@ -454,10 +512,8 @@ jQuery(document).ready(function ($) {
           dropDateTimeOptions,
           mobileDropoffTimeOptions
         );
-        //End
       });
 
-      //Check for url dates
       if (RNB_URL_DATA.date) {
         const elementIds = ['#pickup-time', '#dropoff-time'];
         elementIds.forEach((elementId) => {
@@ -480,14 +536,12 @@ jQuery(document).ready(function ($) {
           });
         });
       }
-      //End
     } else {
       $('#pickup-date').datetimepicker('destroy');
       $('#pickup-date').datetimepicker(datepickerOption);
       $('#dropoff-date').datetimepicker('destroy');
       $('#dropoff-date').datetimepicker(dropDatepickerOption);
 
-      //Check for url dates
       if (RNB_URL_DATA.date) {
         const elementIds = ['#pickup-time', '#dropoff-time'];
         elementIds.forEach((elementId) => {
@@ -511,7 +565,6 @@ jQuery(document).ready(function ($) {
         });
       }
     }
-    //End
   }
 
   RNB_CALENDER_ACTION = {
