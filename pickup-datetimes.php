@@ -35,12 +35,11 @@
         </span>
     <?php endif; ?>
 
-    <?php if (isset($displays['pickup_time']) && $displays['pickup_time'] !== 'closed') : ?>
-        <span class="pick-up-time-picker">
-            <i class="fas fa-clock"></i>
-            <input type="text" name="pickup_time" id="pickup-time" placeholder="<?php echo esc_attr($labels['pickup_time']); ?>" value="" readonly>
-        </span>
-    <?php endif; ?>
+    <?php // T-Rent: pickup time is required on every RnB rental product. ?>
+    <span class="pick-up-time-picker">
+        <i class="fas fa-clock"></i>
+        <input type="text" name="pickup_time" id="pickup-time" placeholder="<?php echo esc_attr($labels['pickup_time']); ?>" value="" readonly>
+    </span>
 
     <?php do_action('rnb_after_pickup_datetime'); ?>
 </div>
