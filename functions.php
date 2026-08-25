@@ -25,7 +25,7 @@ function rnb_generalized_date_format($date, $euro_format)
  * T-Rent rents by calendar day, not elapsed hours.
  * Same date = 1 rental day. Each additional calendar date adds one rental day.
  * Exception: pickup between 19:00 and 21:00 on the previous calendar date
- * is treated as free evening-before pickup when the booking spans exactly one date boundary.
+ * is free evening-before pickup and must never add an extra rental day.
  */
 function rnb_get_duration($start, $end)
 {
@@ -49,14 +49,15 @@ function rnb_get_duration($start, $end)
     $calendar_diff = (int) $start_date->diffInDays($end_date);
     $days = $calendar_diff + 1;
 
-    // Free evening-before pickup applies only to pickup time, only for one date boundary.
+    // Pickup 19:00-21:00 on the date before the paid rental period is free.
+    // Subtract that pickup date for every multi-date booking, not just 1-day rentals.
     $pickup_time = $start->format('H:i');
     if (
-        $calendar_diff === 1 &&
+        $calendar_diff >= 1 &&
         $pickup_time >= '19:00' &&
         $pickup_time <= '21:00'
     ) {
-        $days = 1;
+        $days = max(1, $days - 1);
     }
 
     // RnB expects duration internally in hours.
