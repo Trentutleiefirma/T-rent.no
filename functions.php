@@ -248,3 +248,318 @@ function rnb_convert_dates_in_common_format($dates)
         return Carbon::parse($date)->format('Y-m-d');
     }, $dates);
 }
+
+/**
+ * T-Rent time picker rules.
+ *
+ * Pickup:
+ * - Monday-Friday 08:00-21:00
+ * - Saturday-Sunday 09:00-21:00
+ *
+ * Return:
+ * - Monday-Friday 08:00-20:00
+ * - Saturday-Sunday 09:00-20:00
+ *
+ * RnB's datetimepicker normally renders the complete 24-hour list and only
+ * disables times outside minTime/maxTime. For T-Rent we instead feed the
+ * picker an explicit allowTimes list. This removes the grey out-of-hours
+ * entries completely and keeps the closing time itself selectable.
+ */
+add_action('wp_enqueue_scripts', function () {
+    if (!wp_script_is('rnb-calendar', 'registered')) {
+        return;
+    }
+
+    $trent_timepicker_fix = <<<'JS'
+(function ($) {
+  if (!window.RNB_CALENDER_ACTION || typeof window.RNB_CALENDER_ACTION.init !== 'function') {
+    return;
+  }
+
+  var originalCalendarInit = window.RNB_CALENDER_ACTION.init;
+  var trentCalendarData = null;
+
+  function timeToMinutes(time) {
+    if (!time) {
+      return null;
+    }
+
+    var value = String(time).trim().toLowerCase();
+    var match24 = value.match(/^(\d{1,2}):(\d{2})$/);
+
+    if (match24) {
+      var hour24 = parseInt(match24[1], 10);
+      var minute24 = parseInt(match24[2], 10);
+      if (hour24 >= 0 && hour24 <= 23 && minute24 >= 0 && minute24 <= 59) {
+        return hour24 * 60 + minute24;
+      }
+    }
+
+    var match12 = value.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/);
+    if (match12) {
+      var hour12 = parseInt(match12[1], 10) % 12;
+      var minute12 = parseInt(match12[2], 10);
+      if (match12[3] === 'pm') {
+        hour12 += 12;
+      }
+      return hour12 * 60 + minute12;
+    }
+
+    return null;
+  }
+
+  function formatTime(minutes, conditions) {
+    var hours = Math.floor(minutes / 60);
+    var mins = minutes % 60;
+
+    if (conditions.time_format === '24-hours') {
+      return String(hours).padStart(2, '0') + ':' + String(mins).padStart(2, '0');
+    }
+
+    var suffix = hours >= 12 ? 'pm' : 'am';
+    var displayHour = hours % 12 || 12;
+    return displayHour + ':' + String(mins).padStart(2, '0') + ' ' + suffix;
+  }
+
+  function parseCalendarDate(value, conditions) {
+    if (!value) {
+      return null;
+    }
+
+    var parts = String(value).split('/');
+    var dateObj = null;
+
+    if (parts.length === 3) {
+      if (conditions.date_format === 'Y/m/d') {
+        dateObj = new Date(
+          parseInt(parts[0], 10),
+          parseInt(parts[1], 10) - 1,
+          parseInt(parts[2], 10)
+        );
+      } else if (conditions.euro_format === 'yes' || conditions.date_format === 'd/m/Y') {
+        dateObj = new Date(
+          parseInt(parts[2], 10),
+          parseInt(parts[1], 10) - 1,
+          parseInt(parts[0], 10)
+        );
+      } else {
+        dateObj = new Date(
+          parseInt(parts[2], 10),
+          parseInt(parts[0], 10) - 1,
+          parseInt(parts[1], 10)
+        );
+      }
+    } else {
+      dateObj = new Date(value);
+    }
+
+    return dateObj && !isNaN(dateObj.getTime()) ? dateObj : null;
+  }
+
+  function sameLocalDate(a, b) {
+    return !!(
+      a &&
+      b &&
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate()
+    );
+  }
+
+  function buildAllowedTimes(elementId, data) {
+    if (!data || !data.calendar_props || !data.calendar_props.settings) {
+      return [];
+    }
+
+    var conditions = data.calendar_props.settings.conditions || {};
+    var isPickup = elementId === '#pickup-time';
+    var dateValue = isPickup
+      ? $('#pickup-date').val()
+      : ($('#dropoff-date').val() || $('#pickup-date').val());
+    var selectedDate = parseCalendarDate(dateValue, conditions);
+
+    if (!selectedDate) {
+      return [];
+    }
+
+    var day = selectedDate.getDay();
+    var isWeekend = day === 0 || day === 6;
+    var openMinutes = (isWeekend ? 9 : 8) * 60;
+    var closeMinutes = (isPickup ? 21 : 20) * 60;
+    var interval = parseInt(conditions.time_interval, 10);
+
+    if (!interval || interval < 1) {
+      interval = 30;
+    }
+
+    var minimumMinutes = openMinutes;
+    var now = new Date();
+
+    // Same day: do not show times that have already passed.
+    if (sameLocalDate(selectedDate, now)) {
+      var nowMinutes = now.getHours() * 60 + now.getMinutes();
+      if (now.getSeconds() > 0) {
+        nowMinutes += 1;
+      }
+      minimumMinutes = Math.max(
+        minimumMinutes,
+        Math.ceil(nowMinutes / interval) * interval
+      );
+    }
+
+    // Same calendar date: return must be after pickup.
+    if (!isPickup && $('#pickup-date').val() === $('#dropoff-date').val()) {
+      var pickupMinutes = timeToMinutes($('#pickup-time').val());
+      if (pickupMinutes !== null) {
+        minimumMinutes = Math.max(minimumMinutes, pickupMinutes + interval);
+      }
+    }
+
+    var minuteValues = [];
+    for (var value = openMinutes; value <= closeMinutes; value += interval) {
+      if (value >= minimumMinutes) {
+        minuteValues.push(value);
+      }
+    }
+
+    // Preserve RnB inventory/date-specific availability when it exists.
+    var sourceTimes = null;
+    var allowedByDate = data.allowed_datetime || {};
+
+    if (
+      dateValue &&
+      Object.prototype.hasOwnProperty.call(allowedByDate, dateValue)
+    ) {
+      sourceTimes = Array.isArray(allowedByDate[dateValue])
+        ? allowedByDate[dateValue]
+        : [];
+    } else if (
+      Array.isArray(conditions.allowed_times) &&
+      conditions.allowed_times.length > 0
+    ) {
+      sourceTimes = conditions.allowed_times;
+    }
+
+    if (sourceTimes !== null) {
+      var allowedMinutes = {};
+      sourceTimes.forEach(function (time) {
+        var parsed = timeToMinutes(time);
+        if (parsed !== null) {
+          allowedMinutes[parsed] = true;
+        }
+      });
+
+      minuteValues = minuteValues.filter(function (minutes) {
+        return allowedMinutes[minutes] === true;
+      });
+    }
+
+    return minuteValues.map(function (minutes) {
+      return formatTime(minutes, conditions);
+    });
+  }
+
+  function applyTRentPicker(elementId, data) {
+    if (!$(elementId).length || typeof $.fn.datetimepicker !== 'function') {
+      return;
+    }
+
+    var conditions = data.calendar_props.settings.conditions || {};
+    var times = buildAllowedTimes(elementId, data);
+    var $field = $(elementId);
+    var currentMinutes = timeToMinutes($field.val());
+    var allowedMinuteValues = times.map(timeToMinutes);
+
+    if (
+      currentMinutes !== null &&
+      allowedMinuteValues.indexOf(currentMinutes) === -1
+    ) {
+      $field.val('');
+    }
+
+    var options = {
+      datepicker: false,
+      timepicker: times.length > 0,
+      format: conditions.time_format === '24-hours' ? 'H:i' : 'h:i a',
+      formatTime: conditions.time_format === '24-hours' ? 'H:i' : 'h:i a',
+      scrollInput: false,
+      minTime: false,
+      maxTime: false,
+      allowTimes: times.length > 0 ? times : ['__trent_no_time__'],
+      onShow: function () {
+        var freshTimes = buildAllowedTimes(elementId, data);
+        this.setOptions({
+          timepicker: freshTimes.length > 0,
+          minTime: false,
+          maxTime: false,
+          allowTimes:
+            freshTimes.length > 0 ? freshTimes : ['__trent_no_time__'],
+        });
+      },
+    };
+
+    $field.datetimepicker(options);
+  }
+
+  function refreshTRentPickers(data) {
+    applyTRentPicker('#pickup-time', data);
+    applyTRentPicker('#dropoff-time', data);
+  }
+
+  window.RNB_CALENDER_ACTION.init = function (data) {
+    trentCalendarData = data;
+    var result = originalCalendarInit.apply(this, arguments);
+
+    setTimeout(function () {
+      refreshTRentPickers(data);
+    }, 0);
+
+    $(document)
+      .off('.trentTimeHours')
+      .on(
+        'change.trentTimeHours input.trentTimeHours',
+        '#pickup-date, #dropoff-date, #pickup-time',
+        function () {
+          setTimeout(function () {
+            refreshTRentPickers(data);
+          }, 0);
+        }
+      )
+      .on(
+        'click.trentTimeHours',
+        '#cal-submit-btn, #drop-cal-submit-btn',
+        function () {
+          setTimeout(function () {
+            refreshTRentPickers(data);
+          }, 0);
+        }
+      );
+
+    return result;
+  };
+
+  if (!window.__trentTimePickerCaptureInstalled) {
+    window.__trentTimePickerCaptureInstalled = true;
+
+    var captureRefresh = function (event) {
+      var target = event.target;
+      if (!target || !trentCalendarData) {
+        return;
+      }
+
+      if (target.id === 'pickup-time') {
+        applyTRentPicker('#pickup-time', trentCalendarData);
+      } else if (target.id === 'dropoff-time') {
+        applyTRentPicker('#dropoff-time', trentCalendarData);
+      }
+    };
+
+    document.addEventListener('mousedown', captureRefresh, true);
+    document.addEventListener('touchstart', captureRefresh, true);
+    document.addEventListener('focusin', captureRefresh, true);
+  }
+})(jQuery);
+JS;
+
+    wp_add_inline_script('rnb-calendar', $trent_timepicker_fix, 'after');
+}, 100);
