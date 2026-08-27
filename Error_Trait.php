@@ -161,21 +161,105 @@ trait Error_Trait
         return $errors;
     }
 
+    /**
+     * Normalize the rental data stored in the cart before RnB validates checkout.
+     *
+     * Quote checkout and ordinary add-to-cart do not always store identical key
+     * names. Product-page validation can therefore pass while checkout later
+     * receives a missing or stale return_date and reports an invalid range.
+     */
+    private function normalize_checkout_rental_data($cart_item)
+    {
+        $product_id = isset($cart_item['product_id']) ? absint($cart_item['product_id']) : 0;
+        $rental_data = isset($cart_item['rental_data']) && is_array($cart_item['rental_data'])
+            ? $cart_item['rental_data']
+            : [];
+
+        $posted_data = isset($rental_data['posted_data']) && is_array($rental_data['posted_data'])
+            ? $rental_data['posted_data']
+            : $rental_data;
+
+        if (!$product_id || empty($posted_data)) {
+            return $posted_data;
+        }
+
+        // rearrange_form_data() requires the original form key names.
+        $posted_data['add-to-cart'] = !empty($posted_data['add-to-cart'])
+            ? $posted_data['add-to-cart']
+            : $product_id;
+
+        if (empty($posted_data['booking_inventory'])) {
+            if (!empty($posted_data['inventory_id'])) {
+                $posted_data['booking_inventory'] = $posted_data['inventory_id'];
+            } elseif (!empty($rental_data['booking_inventory'])) {
+                $posted_data['booking_inventory'] = $rental_data['booking_inventory'];
+            }
+        }
+
+        if (empty($posted_data['dropoff_date']) && !empty($posted_data['return_date'])) {
+            $posted_data['dropoff_date'] = $posted_data['return_date'];
+        }
+        if (empty($posted_data['return_date']) && !empty($posted_data['dropoff_date'])) {
+            $posted_data['return_date'] = $posted_data['dropoff_date'];
+        }
+        if (empty($posted_data['return_date']) && !empty($posted_data['pickup_date'])) {
+            $posted_data['return_date'] = $posted_data['pickup_date'];
+            $posted_data['dropoff_date'] = $posted_data['pickup_date'];
+        }
+
+        if (empty($posted_data['dropoff_time']) && !empty($posted_data['return_time'])) {
+            $posted_data['dropoff_time'] = $posted_data['return_time'];
+        }
+        if (empty($posted_data['return_time']) && !empty($posted_data['dropoff_time'])) {
+            $posted_data['return_time'] = $posted_data['dropoff_time'];
+        }
+
+        $normalized = $this->rearrange_form_data($posted_data);
+        if (is_array($normalized)) {
+            $posted_data = $normalized;
+        }
+
+        // Same calendar date is always one paid rental day. Keep the real clock
+        // times for availability/overlap checks, but never let checkout turn the
+        // date range or duration back into zero.
+        if (!empty($posted_data['pickup_date'])) {
+            $return_date = !empty($posted_data['return_date'])
+                ? $posted_data['return_date']
+                : $posted_data['pickup_date'];
+
+            $pickup = Carbon::parse($posted_data['pickup_date'])->startOfDay();
+            $return = Carbon::parse($return_date)->startOfDay();
+
+            if ($pickup->isSameDay($return)) {
+                $same_day = $pickup->toDateString();
+                $posted_data['pickup_date'] = $same_day;
+                $posted_data['return_date'] = $same_day;
+                $posted_data['dropoff_date'] = $same_day;
+                $posted_data['actual_hours'] = 24;
+                $posted_data['days'] = 1;
+                $posted_data['flat_hours'] = 24;
+            }
+        }
+
+        return $posted_data;
+    }
+
     public function handle_checkout_items($cart_items)
     {
         $results = [];
         $errors = [];
 
         foreach ($cart_items as $cart_item) {
-            $product_id = $cart_item['product_id'];
-            $product_type = wc_get_product($product_id)->get_type();
+            $product_id = isset($cart_item['product_id']) ? absint($cart_item['product_id']) : 0;
+            $product = $product_id ? wc_get_product($product_id) : false;
+            $product_type = $product ? $product->get_type() : '';
 
             if ($product_type !== 'redq_rental') {
                 continue;
             }
 
-            $rental_data = $cart_item['rental_data'];
-            $errors[$product_id] = $this->handle_form($rental_data['posted_data'], true);
+            $posted_data = $this->normalize_checkout_rental_data($cart_item);
+            $errors[$product_id] = $this->handle_form($posted_data, true);
         }
 
         foreach ($errors as $key => $error) {
