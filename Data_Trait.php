@@ -10,6 +10,92 @@ use Carbon\CarbonPeriod;
  */
 trait Data_Trait
 {
+    /**
+     * Restore the pickup/dropoff times originally selected by the customer.
+     *
+     * RnB keeps an untouched copy of the quote form in
+     * unformatted_order_quote_meta. The processed quote metadata can lose the
+     * time fields and later fall back to 00:00/23:59 when the quote is added to
+     * the cart. The untouched values are the authoritative customer selection.
+     */
+    public function restore_quote_selected_times($form_data, $quote_id)
+    {
+        if (!is_array($form_data) || empty($quote_id)) {
+            return $form_data;
+        }
+
+        $candidates = [
+            'pickup_time'  => [],
+            'dropoff_time' => [],
+            'return_time'  => [],
+        ];
+
+        // Prefer the untouched request, then fall back to the processed quote.
+        foreach (['unformatted_order_quote_meta', 'order_quote_meta'] as $meta_key) {
+            $quote_meta = json_decode(get_post_meta($quote_id, $meta_key, true), true);
+            if (!is_array($quote_meta)) {
+                continue;
+            }
+
+            foreach ($quote_meta as $field) {
+                if (empty($field['name']) || !array_key_exists('value', $field)) {
+                    continue;
+                }
+
+                $name = rtrim((string) $field['name'], '[]');
+                if (!array_key_exists($name, $candidates) || is_array($field['value'])) {
+                    continue;
+                }
+
+                $value = $this->normalize_quote_time($field['value']);
+                if ($value !== '') {
+                    $candidates[$name][] = $value;
+                }
+            }
+        }
+
+        $pickup_time = $this->pick_original_quote_time($candidates['pickup_time'], ['00:00']);
+        $dropoff_candidates = array_merge($candidates['dropoff_time'], $candidates['return_time']);
+        $dropoff_time = $this->pick_original_quote_time($dropoff_candidates, ['23:00', '23:59']);
+
+        if ($pickup_time !== '') {
+            $form_data['pickup_time'] = $pickup_time;
+        }
+
+        if ($dropoff_time !== '') {
+            $form_data['dropoff_time'] = $dropoff_time;
+            $form_data['return_time'] = $dropoff_time;
+        }
+
+        return $form_data;
+    }
+
+    private function normalize_quote_time($value)
+    {
+        $value = sanitize_text_field(wp_unslash((string) $value));
+        if ($value === '') {
+            return '';
+        }
+
+        $timestamp = strtotime($value);
+        return $timestamp === false ? '' : date('H:i', $timestamp);
+    }
+
+    private function pick_original_quote_time($times, $placeholder_times)
+    {
+        if (empty($times)) {
+            return '';
+        }
+
+        foreach ($times as $time) {
+            if (!in_array($time, $placeholder_times, true)) {
+                return $time;
+            }
+        }
+
+        return $times[0];
+    }
+
     public function rearrange_form_data($formData)
     {
         if (!isset($formData['add-to-cart']) || !isset($formData['booking_inventory']) || !isset($formData['pickup_date'])) {
