@@ -210,6 +210,11 @@ class Ajax extends Booking_Manager
         };
 
         $posted_data['quote_id'] = $quote_id;
+
+        // The processed quote can lose the selected clock times. Restore the
+        // customer's original values before validation, availability and price
+        // data are calculated for the cart.
+        $posted_data = $this->restore_quote_selected_times($posted_data, $quote_id);
         $posted_data = $this->rearrange_form_data($posted_data);
         $ajax_data = $this->prepare_form_data($posted_data);
 
