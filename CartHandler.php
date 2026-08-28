@@ -120,7 +120,8 @@ class CartHandler extends Booking_Manager
         // instead of the 00:00/23:59 fallback values.
         if (
             $product_type === 'redq_rental' &&
-            !empty($cart_item['rental_data']['quote_id'])
+            !empty($cart_item['rental_data']['quote_id']) &&
+            method_exists($this, 'restore_quote_selected_times')
         ) {
             $quote_id = absint($cart_item['rental_data']['quote_id']);
             $cart_item['rental_data'] = $this->restore_quote_selected_times(
