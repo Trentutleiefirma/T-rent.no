@@ -115,6 +115,27 @@ class CartHandler extends Booking_Manager
         $product_id   = $cart_item['data']->get_id();
         $product_type = wc_get_product($product_id)->get_type();
 
+        // Also repair quote items restored from an existing WooCommerce
+        // session, so the cart and checkout show the customer's selected times
+        // instead of the 00:00/23:59 fallback values.
+        if (
+            $product_type === 'redq_rental' &&
+            !empty($cart_item['rental_data']['quote_id'])
+        ) {
+            $quote_id = absint($cart_item['rental_data']['quote_id']);
+            $cart_item['rental_data'] = $this->restore_quote_selected_times(
+                $cart_item['rental_data'],
+                $quote_id
+            );
+
+            if (!empty($cart_item['rental_data']['posted_data']) && is_array($cart_item['rental_data']['posted_data'])) {
+                $cart_item['rental_data']['posted_data'] = $this->restore_quote_selected_times(
+                    $cart_item['rental_data']['posted_data'],
+                    $quote_id
+                );
+            }
+        }
+
         if (isset($cart_item['rental_data']['quote_id']) && !empty($cart_item['rental_data']['quote_id']) && $product_type === 'redq_rental') {
             $cart_item['data']->set_price($cart_item['rental_data']['rental_days_and_costs']['cost']);
         } else {
