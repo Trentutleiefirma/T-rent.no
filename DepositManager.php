@@ -25,7 +25,7 @@ class DepositManager
 
         // Standalone deposit product: useful for Hygglo/Finn/manual rentals.
         add_action('woocommerce_before_add_to_cart_button', [$this, 'render_product_amount_selector'], 5);
-        add_filter('woocommerce_add_to_cart_validation', [$this, 'validate_deposit_add_to_cart'], 99, 3);
+        add_filter('woocommerce_add_to_cart_validation', [$this, 'validate_deposit_add_to_cart'], 99, 6);
         add_filter('woocommerce_product_single_add_to_cart_text', [$this, 'single_add_to_cart_text'], 20, 2);
         add_filter('woocommerce_get_price_html', [$this, 'deposit_price_html'], 20, 2);
         add_filter('woocommerce_add_to_cart_redirect', [$this, 'redirect_deposit_to_checkout'], 99);
@@ -138,13 +138,17 @@ class DepositManager
         echo '</div>';
     }
 
-    public function validate_deposit_add_to_cart($passed, $product_id, $quantity)
+    public function validate_deposit_add_to_cart($passed, $product_id, $quantity, $variation_id = 0, $variations = [], $cart_item_data = [])
     {
         if (!$this->is_deposit_product($product_id)) return $passed;
 
-        $amount = isset($_REQUEST[self::CART_KEY])
-            ? $this->valid_amount(wp_unslash($_REQUEST[self::CART_KEY]))
-            : 0;
+        if (!empty($cart_item_data[self::CART_KEY])) {
+            $amount = $this->valid_amount($cart_item_data[self::CART_KEY]);
+        } else {
+            $amount = isset($_REQUEST[self::CART_KEY])
+                ? $this->valid_amount(wp_unslash($_REQUEST[self::CART_KEY]))
+                : 0;
+        }
 
         if ($amount <= 0) {
             wc_add_notice('Velg depositum mellom 1 000 og 5 000 kr.', 'error');
