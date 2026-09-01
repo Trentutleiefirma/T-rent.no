@@ -8,9 +8,9 @@ if (!defined('ABSPATH')) {
 /**
  * T-Rent standalone deposit product.
  *
- * This is deliberately separate from RnB security deposits used on normal
- * rental bookings. Nothing in this class changes, removes or adds deposit
- * handling to ordinary rental products or their checkout flow.
+ * This is deliberately separate from RnB security deposits used on rental
+ * products. T-Rent accepts full payment at checkout; Acowebs partial-payment
+ * handling is disabled below so it cannot split either rental or deposit orders.
  */
 class DepositManager
 {
@@ -34,6 +34,18 @@ class DepositManager
         add_filter('woocommerce_get_cart_item_from_session', [$this, 'restore_cart_item'], 99, 2);
         add_action('woocommerce_before_calculate_totals', [$this, 'set_deposit_price'], 99);
         add_action('woocommerce_checkout_create_order_line_item', [$this, 'add_order_item_meta'], 20, 4);
+
+        /*
+         * T-Rent does not use Acowebs partial payments. Depositum is a normal,
+         * fully-paid WooCommerce product, and rental orders must also be paid
+         * in full. Keep Acowebs from changing cart totals or order statuses.
+         */
+        if (defined('AWCDP_VERSION')) {
+            add_filter('awcdp_disable_deposit_condition', [$this, 'disable_acowebs_deposits'], PHP_INT_MAX, 2);
+            add_action('woocommerce_before_calculate_totals', [$this, 'disable_acowebs_cart_mode'], PHP_INT_MAX);
+            add_action('woocommerce_checkout_update_order_meta', [$this, 'remove_acowebs_order_meta'], PHP_INT_MAX);
+            add_action('woocommerce_store_api_checkout_update_order_meta', [$this, 'remove_acowebs_order_meta'], PHP_INT_MAX);
+        }
     }
 
     /**
@@ -48,6 +60,7 @@ class DepositManager
 
         $product_id = (int) wc_get_product_id_by_sku(self::PRODUCT_SKU);
         if ($product_id) {
+            $this->disable_acowebs_for_product($product_id);
             return $product_id;
         }
 
@@ -70,7 +83,104 @@ class DepositManager
             . 'Produktet kan brukes for eksempel ved leie via Hygglo, Finn eller andre manuelle avtaler.'
         );
 
-        return (int) $product->save();
+        $product_id = (int) $product->save();
+        $this->disable_acowebs_for_product($product_id);
+
+        return $product_id;
+    }
+
+    /**
+     * Acowebs partial payments are not part of T-Rent's payment model.
+     *
+     * The plugin passes the product object as the filter value. Returning
+     * false is its documented/internal signal to skip deposit handling.
+     */
+    public function disable_acowebs_deposits($condition, $default = true)
+    {
+        return false;
+    }
+
+    /**
+     * Remove stale Acowebs cart/session state, including carts restored from
+     * sessions created before this compatibility guard was installed.
+     */
+    public function disable_acowebs_cart_mode($cart)
+    {
+        if (is_admin() && !defined('DOING_AJAX')) {
+            return;
+        }
+
+        if ($cart && is_a($cart, 'WC_Cart')) {
+            foreach ($cart->get_cart() as $cart_item_key => $cart_item) {
+                if (isset($cart->cart_contents[$cart_item_key]['awcdp_deposit'])) {
+                    unset($cart->cart_contents[$cart_item_key]['awcdp_deposit']);
+                }
+            }
+
+            if (defined('AWCDP_VERSION')) {
+                if (!is_array($cart->deposit_info ?? null)) {
+                    $cart->deposit_info = [];
+                }
+
+                $cart->deposit_info['deposit_enabled'] = false;
+            }
+        }
+
+        if (function_exists('WC') && WC()->session) {
+            WC()->session->set('awcdp_deposit_option', 'full');
+            WC()->session->set('deposit_enabled', false);
+        }
+    }
+
+    /**
+     * Ensure new orders cannot retain Acowebs schedules that would later set
+     * the order status to "partially-paid". Supports classic and block checkout.
+     */
+    public function remove_acowebs_order_meta($order_or_id)
+    {
+        $order = is_a($order_or_id, 'WC_Order')
+            ? $order_or_id
+            : wc_get_order($order_or_id);
+
+        if (!$order) {
+            return;
+        }
+
+        $meta_keys = [
+            '_awcdp_deposits_payment_schedule',
+            '_awcdp_deposits_order_has_deposit',
+            '_awcdp_deposits_deposit_paid',
+            '_awcdp_deposits_second_payment_paid',
+            '_awcdp_deposits_deposit_amount',
+            '_awcdp_deposits_second_payment',
+            '_awcdp_deposits_deposit_breakdown',
+            '_awcdp_deposits_deposit_payment_time',
+            '_awcdp_deposits_second_payment_reminder_email_sent',
+        ];
+
+        foreach ($meta_keys as $meta_key) {
+            $order->delete_meta_data($meta_key);
+        }
+
+        $order->update_meta_data('_awcdp_deposit_option', 'full');
+        $order->update_meta_data('_awcdp_is_deposit', 'no');
+
+        foreach ($order->get_items() as $item) {
+            $item->delete_meta_data('awcdp_deposit_meta');
+            $item->save();
+        }
+
+        $order->save();
+    }
+
+    private function disable_acowebs_for_product($product_id)
+    {
+        if ($product_id <= 0) {
+            return;
+        }
+
+        update_post_meta($product_id, '_awcdp_deposit_enabled', 'no');
+        update_post_meta($product_id, '_awcdp_deposit_force_deposit', 'no');
     }
 
     private function product_id()
@@ -217,6 +327,9 @@ class DepositManager
 
     public function restore_cart_item($item, $values)
     {
+        // Acowebs may have persisted this in an older customer session.
+        unset($item['awcdp_deposit']);
+
         if (isset($values[self::CART_KEY])) {
             $item[self::CART_KEY] = (float) $values[self::CART_KEY];
         }
@@ -266,6 +379,9 @@ class DepositManager
 
     public function add_order_item_meta($item, $cart_item_key, $values, $order)
     {
+        // Defensive cleanup in case another plugin re-added the metadata late.
+        $item->delete_meta_data('awcdp_deposit_meta');
+
         if (
             empty($values[self::CART_KEY])
             || empty($values['data'])
