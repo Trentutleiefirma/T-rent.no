@@ -242,6 +242,9 @@ final class RedQ_Rental_And_Bookings
         require_once trailingslashit(RNB_PATH) . RNB_INC_DIR . '/class-redq-product-redq_rental.php';
         require_once trailingslashit(RNB_PATH) . 'DepositManager.php';
         new REDQ_RnB\DepositManager();
+
+        require_once trailingslashit(RNB_PATH) . 'OrderDateManager.php';
+        new REDQ_RnB\OrderDateManager();
     }
 
     /**
