@@ -245,6 +245,9 @@ final class RedQ_Rental_And_Bookings
 
         require_once trailingslashit(RNB_PATH) . 'OrderDateManager.php';
         new REDQ_RnB\OrderDateManager();
+
+        require_once trailingslashit(RNB_PATH) . 'EquipmentInspectionManager.php';
+        new REDQ_RnB\EquipmentInspectionManager();
     }
 
     /**
