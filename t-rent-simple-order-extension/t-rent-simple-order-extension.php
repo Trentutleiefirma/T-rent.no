@@ -271,40 +271,7 @@ final class TRent_Simple_Order_Extension
                 $data['posted_data']['return_time'] = $return_time;
             }
 
-            if (isset($data['rental_days_and_costs']) && is_array($data['rental_days_and_costs'])) {
-                foreach (['days'] as $key) {
-                    if (isset($data['rental_days_and_costs'][$key]) && is_numeric($data['rental_days_and_costs'][$key])) {
-                        $data['rental_days_and_costs'][$key] =
-                            (int) $data['rental_days_and_costs'][$key] + $extension_days;
-                    }
-                }
-
-                foreach (['flat_hours', 'actual_hours'] as $key) {
-                    if (isset($data['rental_days_and_costs'][$key]) && is_numeric($data['rental_days_and_costs'][$key])) {
-                        $data['rental_days_and_costs'][$key] =
-                            (float) $data['rental_days_and_costs'][$key] + ($extension_days * 24);
-                    }
-                }
-
-                if (
-                    isset($data['rental_days_and_costs']['booked_dates']['saved'])
-                    && is_array($data['rental_days_and_costs']['booked_dates']['saved'])
-                ) {
-                    $saved = $data['rental_days_and_costs']['booked_dates']['saved'];
-                    $cursor = new DateTimeImmutable($current['date'], wp_timezone());
-
-                    for ($i = 1; $i <= $extension_days; $i++) {
-                        $date = $cursor->modify('+' . $i . ' day')->format('Y-m-d');
-                        if (!in_array($date, $saved, true)) {
-                            $saved[] = $date;
-                        }
-                    }
-
-                    $data['rental_days_and_costs']['booked_dates']['saved'] = array_values($saved);
-                }
-            }
-
-            $item->update_meta_data($meta_key, $data);
+            // Bevisst: ikke endre rental_days_and_costs eller prisgrunnlaget på en allerede opprettet ordre.\n            // Kun returdata oppdateres; RnB availability er kalenderens sperre.\n\n            $item->update_meta_data($meta_key, $data);
         }
 
         $hidden_value = $new_return_date . '|' . $return_time;
