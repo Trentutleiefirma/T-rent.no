@@ -432,7 +432,7 @@ class OrderExtensionManager
         $target_net = $this->money($target_net);
 
         if (!$fee) {
-            $fee = new WC_Order_Item_Fee();
+            $fee = new \WC_Order_Item_Fee();
             $fee->set_name('Forlengelse');
             $fee->add_meta_data(self::FEE_META, 'yes', true);
             $order->add_item($fee);
@@ -823,7 +823,7 @@ class OrderExtensionManager
 
     private function valid_date($date)
     {
-        $parsed = DateTime::createFromFormat('!Y-m-d', $date);
+        $parsed = \DateTime::createFromFormat('!Y-m-d', $date);
         return $parsed && $parsed->format('Y-m-d') === $date;
     }
 
