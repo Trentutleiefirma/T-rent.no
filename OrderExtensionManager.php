@@ -41,6 +41,8 @@ class OrderExtensionManager
         add_filter('woocommerce_order_needs_payment', [$this, 'order_needs_payment'], PHP_INT_MAX, 3);
         add_filter('woocommerce_order_get_total', [$this, 'payment_total'], PHP_INT_MAX, 2);
         add_filter('woocommerce_valid_order_statuses_for_payment_complete', [$this, 'payment_complete_statuses'], PHP_INT_MAX, 2);
+        add_filter('woocommerce_payment_complete_order_status', [$this, 'preserve_order_status_on_extension_payment'], PHP_INT_MAX, 3);
+        add_filter('wc_stripe_allowed_payment_processing_statuses', [$this, 'stripe_allowed_payment_statuses'], PHP_INT_MAX, 2);
         add_filter('woocommerce_order_button_text', [$this, 'payment_button_text'], PHP_INT_MAX, 1);
 
         add_action('woocommerce_pay_order_before_payment', [$this, 'render_payment_notice'], 5);
@@ -282,6 +284,33 @@ class OrderExtensionManager
         return $statuses;
     }
 
+    public function preserve_order_status_on_extension_payment($status, $order_id, $order)
+    {
+        if (!is_a($order, 'WC_Order')) {
+            return $status;
+        }
+
+        if ($this->money($order->get_meta(self::DUE_META, true)) > 0 && $this->payment_context_is_active($order)) {
+            return $order->get_status();
+        }
+
+        return $status;
+    }
+
+    public function stripe_allowed_payment_statuses($statuses, $order)
+    {
+        if (!is_a($order, 'WC_Order')) {
+            return $statuses;
+        }
+
+        if ($this->money($order->get_meta(self::DUE_META, true)) > 0 && $this->payment_context_is_active($order)) {
+            $statuses[] = $order->get_status();
+            $statuses = array_values(array_unique(array_filter($statuses)));
+        }
+
+        return $statuses;
+    }
+
     public function payment_button_text($text)
     {
         $order = $this->request_order();
@@ -353,7 +382,12 @@ class OrderExtensionManager
         }
 
         $due = $this->money($order->get_meta(self::DUE_META, true));
-        if ($due <= 0) {
+        if ($due <= 0 || !$this->payment_context_is_active($order)) {
+            return;
+        }
+
+        $original_tx = (string) $order->get_meta(self::ORIGINAL_TX_META, true);
+        if ($transaction_id !== '' && $original_tx !== '' && hash_equals($original_tx, (string) $transaction_id)) {
             return;
         }
 
@@ -378,7 +412,6 @@ class OrderExtensionManager
             WC()->session->__unset('t_rent_extension_order_id');
         }
 
-        $original_tx = (string) $order->get_meta(self::ORIGINAL_TX_META, true);
         $original_gateway = (string) $order->get_meta(self::ORIGINAL_GATEWAY_META, true);
         $original_gateway_title = (string) $order->get_meta(self::ORIGINAL_GATEWAY_TITLE, true);
 
@@ -819,6 +852,19 @@ class OrderExtensionManager
         }
 
         return false;
+    }
+
+    private function payment_context_is_active($order)
+    {
+        if (!is_a($order, 'WC_Order')) {
+            return false;
+        }
+
+        if ($this->is_extension_payment_request($order) || $this->is_extension_gateway_request($order)) {
+            return true;
+        }
+
+        return (int) $order->get_meta(self::PAYMENT_ACTIVE_UNTIL_META, true) >= time();
     }
 
     private function valid_date($date)
