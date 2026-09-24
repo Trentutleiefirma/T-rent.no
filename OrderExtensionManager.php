@@ -191,7 +191,6 @@ class OrderExtensionManager
             $this->redirect_with_notice($order_id, 'error', 'Kunne ikke legge forlengelsen til ordren.');
         }
 
-        $order->calculate_taxes();
         $order->calculate_totals(false);
         $order->save();
 
@@ -428,8 +427,22 @@ class OrderExtensionManager
             $fee->set_tax_class('');
         }
 
+        $fee->calculate_taxes($this->tax_location($order));
         $fee->save();
         return $fee;
+    }
+
+    private function tax_location($order)
+    {
+        $shipping_country = (string) $order->get_shipping_country();
+        $use_shipping = $shipping_country !== '';
+
+        return [
+            'country'  => $use_shipping ? $shipping_country : (string) $order->get_billing_country(),
+            'state'    => $use_shipping ? (string) $order->get_shipping_state() : (string) $order->get_billing_state(),
+            'postcode' => $use_shipping ? (string) $order->get_shipping_postcode() : (string) $order->get_billing_postcode(),
+            'city'     => $use_shipping ? (string) $order->get_shipping_city() : (string) $order->get_billing_city(),
+        ];
     }
 
     private function update_rental_dates($order, $item, $new_return_date, $new_return_timestamp)
