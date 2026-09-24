@@ -276,7 +276,7 @@ class OrderExtensionManager
             return $statuses;
         }
 
-        if ($this->money($order->get_meta(self::DUE_META, true)) > 0) {
+        if ($this->money($order->get_meta(self::DUE_META, true)) > 0 && $this->payment_context_is_active($order)) {
             $statuses[] = $order->get_status();
             $statuses = array_values(array_unique(array_filter($statuses)));
         }
