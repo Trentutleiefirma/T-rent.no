@@ -230,7 +230,7 @@ class OrderExtensionManager
 
     public function order_needs_payment($needs_payment, $order, $valid_statuses)
     {
-        if ($this->is_extension_payment_request($order)) {
+        if ($this->is_extension_payment_request($order) || $this->is_extension_gateway_request($order)) {
             return $this->money($order->get_meta(self::DUE_META, true)) > 0;
         }
 
