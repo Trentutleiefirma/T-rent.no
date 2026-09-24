@@ -29,12 +29,14 @@ class OrderExtensionManager
     const ORIGINAL_GATEWAY_META     = '_t_rent_extension_original_payment_method';
     const ORIGINAL_GATEWAY_TITLE    = '_t_rent_extension_original_payment_method_title';
     const PAYMENT_HISTORY_META      = '_t_rent_extension_payments';
+    const PAYMENT_ACTIVE_UNTIL_META = '_t_rent_extension_payment_active_until';
 
     public function __construct()
     {
         add_action('woocommerce_admin_order_data_after_order_details', [$this, 'render_admin_panel'], 30, 1);
         add_action('admin_post_' . self::ACTION, [$this, 'handle_extension']);
         add_action('admin_notices', [$this, 'admin_notice']);
+        add_action('template_redirect', [$this, 'activate_payment_context'], 5);
 
         add_filter('woocommerce_order_needs_payment', [$this, 'order_needs_payment'], PHP_INT_MAX, 3);
         add_filter('woocommerce_order_get_total', [$this, 'payment_total'], PHP_INT_MAX, 2);
@@ -241,7 +243,7 @@ class OrderExtensionManager
             return $total;
         }
 
-        if ($this->is_extension_payment_request($order)) {
+        if ($this->is_extension_payment_request($order) || $this->is_extension_gateway_request($order)) {
             $due = $this->money($order->get_meta(self::DUE_META, true));
             if ($due > 0) {
                 return $due;
@@ -249,6 +251,21 @@ class OrderExtensionManager
         }
 
         return $total;
+    }
+
+    public function activate_payment_context()
+    {
+        $order = $this->request_order();
+        if (!$order || !$this->is_extension_payment_request($order)) {
+            return;
+        }
+
+        $order->update_meta_data(self::PAYMENT_ACTIVE_UNTIL_META, time() + DAY_IN_SECONDS);
+        $order->save();
+
+        if (function_exists('WC') && WC()->session) {
+            WC()->session->set('t_rent_extension_order_id', $order->get_id());
+        }
     }
 
     public function payment_complete_statuses($statuses, $order)
@@ -355,6 +372,11 @@ class OrderExtensionManager
         $order->update_meta_data(self::PAYMENT_HISTORY_META, $history);
         $order->delete_meta_data(self::DUE_META);
         $order->delete_meta_data(self::TOKEN_META);
+        $order->delete_meta_data(self::PAYMENT_ACTIVE_UNTIL_META);
+
+        if (function_exists('WC') && WC()->session) {
+            WC()->session->__unset('t_rent_extension_order_id');
+        }
 
         $original_tx = (string) $order->get_meta(self::ORIGINAL_TX_META, true);
         $original_gateway = (string) $order->get_meta(self::ORIGINAL_GATEWAY_META, true);
@@ -766,6 +788,37 @@ class OrderExtensionManager
         }
 
         return $this->money($order->get_meta(self::DUE_META, true)) > 0;
+    }
+
+    private function is_extension_gateway_request($order)
+    {
+        if (!is_a($order, 'WC_Order')) {
+            return false;
+        }
+
+        $due = $this->money($order->get_meta(self::DUE_META, true));
+        $active_until = (int) $order->get_meta(self::PAYMENT_ACTIVE_UNTIL_META, true);
+
+        if ($due <= 0 || $active_until < time()) {
+            return false;
+        }
+
+        if (function_exists('WC') && WC()->session) {
+            $session_order_id = absint(WC()->session->get('t_rent_extension_order_id'));
+            if ($session_order_id === $order->get_id()) {
+                return true;
+            }
+        }
+
+        if (isset($_REQUEST['wc-api']) || isset($_REQUEST['wc_api']) || isset($_REQUEST['wc-ajax'])) {
+            return true;
+        }
+
+        if (defined('REST_REQUEST') && REST_REQUEST) {
+            return true;
+        }
+
+        return false;
     }
 
     private function valid_date($date)
