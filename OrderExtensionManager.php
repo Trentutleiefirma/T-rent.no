@@ -17,6 +17,8 @@ if (!defined('ABSPATH')) {
  */
 class OrderExtensionManager
 {
+    private $vipps_extension_processing_order_id = 0;
+
     const ACTION                    = 't_rent_extend_order';
     const NONCE_ACTION              = 't_rent_extend_order';
     const TOKEN_ARG                 = 't_rent_extension';
@@ -43,6 +45,13 @@ class OrderExtensionManager
         add_filter('woocommerce_valid_order_statuses_for_payment_complete', [$this, 'payment_complete_statuses'], PHP_INT_MAX, 2);
         add_filter('woocommerce_payment_complete_order_status', [$this, 'preserve_order_status_on_extension_payment'], PHP_INT_MAX, 3);
         add_filter('wc_stripe_allowed_payment_processing_statuses', [$this, 'stripe_allowed_payment_statuses'], PHP_INT_MAX, 2);
+
+        add_filter('woo_vipps_allow_repayment', [$this, 'vipps_allow_repayment'], PHP_INT_MAX, 2);
+        add_filter('woo_vipps_enable_payment_retry', [$this, 'vipps_enable_payment_retry'], PHP_INT_MAX, 4);
+        add_action('woo_vipps_before_process_payment', [$this, 'vipps_begin_extension_payment'], 1, 1);
+        add_action('woo_vipps_before_redirect_to_vipps', [$this, 'vipps_end_extension_payment'], PHP_INT_MAX, 1);
+        add_filter('woocommerce_order_get_status', [$this, 'vipps_processing_status'], PHP_INT_MAX, 2);
+
         add_filter('woocommerce_order_button_text', [$this, 'payment_button_text'], PHP_INT_MAX, 1);
 
         add_action('woocommerce_pay_order_before_payment', [$this, 'render_payment_notice'], 5);
@@ -309,6 +318,64 @@ class OrderExtensionManager
         }
 
         return $statuses;
+    }
+
+    public function vipps_allow_repayment($allow, $order)
+    {
+        if (is_a($order, 'WC_Order')
+            && $this->money($order->get_meta(self::DUE_META, true)) > 0
+            && $this->payment_context_is_active($order)
+        ) {
+            return true;
+        }
+
+        return $allow;
+    }
+
+    public function vipps_enable_payment_retry($enabled, $order, $vipps_status = '', $retry_count = 0)
+    {
+        if (is_a($order, 'WC_Order')
+            && $this->money($order->get_meta(self::DUE_META, true)) > 0
+            && $this->payment_context_is_active($order)
+        ) {
+            return true;
+        }
+
+        return $enabled;
+    }
+
+    public function vipps_begin_extension_payment($order_id)
+    {
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return;
+        }
+
+        if ($this->money($order->get_meta(self::DUE_META, true)) > 0 && $this->payment_context_is_active($order)) {
+            $this->vipps_extension_processing_order_id = $order->get_id();
+        }
+    }
+
+    public function vipps_end_extension_payment($order_id)
+    {
+        if ($this->vipps_extension_processing_order_id === absint($order_id)) {
+            $this->vipps_extension_processing_order_id = 0;
+        }
+    }
+
+    public function vipps_processing_status($status, $order)
+    {
+        if (!is_a($order, 'WC_Order')) {
+            return $status;
+        }
+
+        if ($this->vipps_extension_processing_order_id === $order->get_id()
+            && $this->money($order->get_meta(self::DUE_META, true)) > 0
+        ) {
+            return 'pending';
+        }
+
+        return $status;
     }
 
     public function payment_button_text($text)
