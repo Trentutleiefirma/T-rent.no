@@ -173,7 +173,7 @@ class OrderExtensionManager
         }
 
         $return_time = wp_date('H:i:s', $current_return);
-        $new_return_timestamp = strtotime($new_return_date . ' ' . $return_time);
+        $new_return_timestamp = $this->local_datetime_timestamp($new_return_date, $return_time);
 
         if (!$new_return_timestamp || $new_return_timestamp <= $current_return) {
             $this->redirect_with_notice($order_id, 'error', 'Ny sluttdato må være senere enn dagens sluttdato.');
@@ -526,7 +526,10 @@ class OrderExtensionManager
 
         $pickup_date = $this->pickup_date($rental_data);
         if ($pickup_date) {
-            $days = max(1, (int) floor((strtotime($new_date) - strtotime($pickup_date)) / DAY_IN_SECONDS) + 1);
+            $pickup_dt = $this->local_date_object($pickup_date);
+            $return_dt = $this->local_date_object($new_date);
+            $days = ($pickup_dt && $return_dt) ? ((int) $pickup_dt->diff($return_dt)->days + 1) : 1;
+            $days = max(1, $days);
             if (!isset($rental_data['rental_days_and_costs']) || !is_array($rental_data['rental_days_and_costs'])) {
                 $rental_data['rental_days_and_costs'] = [];
             }
@@ -535,8 +538,10 @@ class OrderExtensionManager
             $rental_data['rental_days_and_costs']['actual_hours'] = $days * 24;
 
             $saved = [];
-            for ($i = 0; $i < $days; $i++) {
-                $saved[] = wp_date('Y-m-d', strtotime('+' . $i . ' day', strtotime($pickup_date)));
+            if ($pickup_dt) {
+                for ($i = 0; $i < $days; $i++) {
+                    $saved[] = $pickup_dt->modify('+' . $i . ' day')->format('Y-m-d');
+                }
             }
             if (!isset($rental_data['rental_days_and_costs']['booked_dates']) || !is_array($rental_data['rental_days_and_costs']['booked_dates'])) {
                 $rental_data['rental_days_and_costs']['booked_dates'] = [];
@@ -612,8 +617,10 @@ class OrderExtensionManager
 
         $events = [];
         foreach ($rows as $row) {
-            $start = max($from_timestamp, strtotime($row['pickup_datetime']));
-            $end = min($to_timestamp, strtotime($row['return_datetime']));
+            $row_start = $this->local_datetime_timestamp((string) $row['pickup_datetime']);
+            $row_end = $this->local_datetime_timestamp((string) $row['return_datetime']);
+            $start = max($from_timestamp, $row_start);
+            $end = min($to_timestamp, $row_end);
             if (!$start || !$end || $start >= $end) {
                 continue;
             }
@@ -739,7 +746,7 @@ class OrderExtensionManager
         }
 
         if ($date !== '') {
-            $timestamp = strtotime($date . ' ' . ($time !== '' ? $time : '20:00:00'));
+            $timestamp = $this->local_datetime_timestamp($date, $time !== '' ? $time : '20:00:00');
             if ($timestamp) {
                 return $timestamp;
             }
@@ -748,7 +755,10 @@ class OrderExtensionManager
         $hidden = (string) $item->get_meta('_return_hidden_datetime', true);
         if ($hidden !== '') {
             $parts = explode('|', $hidden, 2);
-            $timestamp = strtotime($parts[0] . ' ' . (!empty($parts[1]) ? $parts[1] : '20:00:00'));
+            $timestamp = $this->local_datetime_timestamp(
+                isset($parts[0]) ? $parts[0] : '',
+                !empty($parts[1]) ? $parts[1] : '20:00:00'
+            );
             if ($timestamp) {
                 return $timestamp;
             }
@@ -759,13 +769,47 @@ class OrderExtensionManager
 
     private function pickup_date($data)
     {
+        $value = '';
         if (!empty($data['pickup_date'])) {
-            return wp_date('Y-m-d', strtotime($data['pickup_date']));
+            $value = (string) $data['pickup_date'];
+        } elseif (!empty($data['posted_data']['pickup_date'])) {
+            $value = (string) $data['posted_data']['pickup_date'];
         }
-        if (!empty($data['posted_data']['pickup_date'])) {
-            return wp_date('Y-m-d', strtotime($data['posted_data']['pickup_date']));
+
+        if ($value === '') {
+            return '';
         }
-        return '';
+
+        $date = $this->local_date_object($value);
+        return $date ? $date->format('Y-m-d') : '';
+    }
+
+    private function local_date_object($value)
+    {
+        try {
+            return new \DateTimeImmutable((string) $value, wp_timezone());
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    private function local_datetime_timestamp($date, $time = '')
+    {
+        $value = trim((string) $date);
+        if ($value === '') {
+            return 0;
+        }
+
+        if ($time !== '' && strpos($value, ' ') === false && strpos($value, 'T') === false) {
+            $value .= ' ' . trim((string) $time);
+        }
+
+        try {
+            $datetime = new \DateTimeImmutable($value, wp_timezone());
+            return $datetime->getTimestamp();
+        } catch (\Exception $e) {
+            return 0;
+        }
     }
 
     private function effective_tax_rate($item)
