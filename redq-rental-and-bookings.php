@@ -240,17 +240,39 @@ final class RedQ_Rental_And_Bookings
 
 
         require_once trailingslashit(RNB_PATH) . RNB_INC_DIR . '/class-redq-product-redq_rental.php';
-        require_once trailingslashit(RNB_PATH) . 'DepositManager.php';
-        new REDQ_RnB\DepositManager();
 
-        require_once trailingslashit(RNB_PATH) . 'OrderDateManager.php';
-        new REDQ_RnB\OrderDateManager();
+        $custom_modules = [
+            [
+                'file'  => 'DepositManager.php',
+                'class' => 'REDQ_RnB\\DepositManager',
+            ],
+            [
+                'file'  => 'OrderDateManager.php',
+                'class' => 'REDQ_RnB\\OrderDateManager',
+            ],
+            [
+                'file'  => 'OrderExtensionManager.php',
+                'class' => 'REDQ_RnB\\OrderExtensionManager',
+            ],
+            [
+                'file'  => 'EquipmentInspectionManager.php',
+                'class' => 'REDQ_RnB\\EquipmentInspectionManager',
+            ],
+        ];
 
-        require_once trailingslashit(RNB_PATH) . 'OrderExtensionManager.php';
-        new REDQ_RnB\OrderExtensionManager();
+        foreach ($custom_modules as $module) {
+            $file = trailingslashit(RNB_PATH) . $module['file'];
 
-        require_once trailingslashit(RNB_PATH) . 'EquipmentInspectionManager.php';
-        new REDQ_RnB\EquipmentInspectionManager();
+            if (!file_exists($file)) {
+                continue;
+            }
+
+            require_once $file;
+
+            if (class_exists($module['class'])) {
+                new $module['class']();
+            }
+        }
     }
 
     /**
