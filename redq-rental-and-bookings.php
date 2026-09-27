@@ -248,6 +248,9 @@ final class RedQ_Rental_And_Bookings
 
         require_once trailingslashit(RNB_PATH) . 'EquipmentInspectionManager.php';
         new REDQ_RnB\EquipmentInspectionManager();
+
+        require_once trailingslashit(RNB_PATH) . 'ProductAddonManager.php';
+        new REDQ_RnB\ProductAddonManager();
     }
 
     /**
