@@ -55,6 +55,13 @@ class ProductAddonManager extends Booking_Manager
         add_action('wp_ajax_nopriv_redq_request_for_a_quote', [$this, 'validate_quote_addons'], 1);
 
         /*
+         * RnB already recalculates the main product whenever the booking form
+         * changes. Extend that same response with selected add-on rent/deposit
+         * so the visible summary and hidden quote_price stay in sync.
+         */
+        add_filter('rnb_calculate_inventory_data', [$this, 'include_addons_in_price_response'], 20, 2);
+
+        /*
          * validate_quote_addons() runs before RnB creates the request_quote post.
          * Persist the exact add-on calculation as soon as that post is inserted.
          */
@@ -185,6 +192,10 @@ class ProductAddonManager extends Booking_Manager
                     remove.style.cssText = 'padding:3px 8px;min-height:auto;';
                     remove.addEventListener('click', function () {
                         row.remove();
+                        var form = row.closest('form.rnb-cart') || document.querySelector('form.rnb-cart');
+                        if (form && window.jQuery) {
+                            window.jQuery(form).trigger('change');
+                        }
                     });
 
                     row.appendChild(text);
@@ -202,6 +213,11 @@ class ProductAddonManager extends Booking_Manager
 
                     addProduct(option.value, option.text);
                     picker.value = '';
+
+                    var form = selected.closest('form.rnb-cart') || document.querySelector('form.rnb-cart');
+                    if (form && window.jQuery) {
+                        window.jQuery(form).trigger('change');
+                    }
                 });
             }
 
@@ -213,6 +229,195 @@ class ProductAddonManager extends Booking_Manager
         })();
         </script>
         <?php
+    }
+
+    /**
+     * Add selected add-on products to RnB's normal live price calculation.
+     *
+     * The main product is still calculated entirely by RnB. We only calculate
+     * each extra rental product with the same dates, then merge its rent and
+     * refundable deposit into the response RnB already sends to main-script.js.
+     */
+    public function include_addons_in_price_response($response, $posted_data)
+    {
+        $form = isset($_POST['form']) && is_array($_POST['form'])
+            ? wp_unslash($_POST['form'])
+            : [];
+
+        $raw_ids = isset($form['trent_addon_products'])
+            ? (array) $form['trent_addon_products']
+            : [];
+
+        $selected_ids = array_values(array_unique(array_filter(array_map('absint', $raw_ids))));
+
+        if (empty($selected_ids) || empty($response['price_breakdown']) || !is_array($response['price_breakdown'])) {
+            return $response;
+        }
+
+        $addon_rows = [];
+        $addon_rent_total = 0.0;
+        $addon_deposit_total = 0.0;
+        $addon_grand_total = 0.0;
+        $addon_booking_cost = 0.0;
+
+        foreach ($selected_ids as $addon_id) {
+            $addon_product = wc_get_product($addon_id);
+
+            if (!$addon_product || !$addon_product->is_type('redq_rental')) {
+                continue;
+            }
+
+            $calculated = $this->prepare_addon_rental_data($form, $addon_id, false);
+
+            if (is_wp_error($calculated)) {
+                if (empty($response['error']) || !is_array($response['error'])) {
+                    $response['error'] = [];
+                }
+
+                $response['error'][] = sprintf(
+                    esc_html__('%s er ikke tilgjengelig i valgt periode.', 'redq-rental'),
+                    $addon_product->get_name()
+                );
+                continue;
+            }
+
+            $rental_data = $calculated['rental_data'];
+            $breakdown = $rental_data['rental_days_and_costs']['price_breakdown'];
+            $quantity = !empty($rental_data['quantity'])
+                ? max(1, (int) $rental_data['quantity'])
+                : 1;
+
+            $rent = isset($breakdown['deposit_free_total'])
+                ? (float) $breakdown['deposit_free_total'] * $quantity
+                : 0.0;
+            $deposit = isset($breakdown['deposit_total'])
+                ? (float) $breakdown['deposit_total'] * $quantity
+                : 0.0;
+            $grand = isset($breakdown['total'])
+                ? (float) $breakdown['total'] * $quantity
+                : ($rent + $deposit);
+            $booking_cost = isset($rental_data['rental_days_and_costs']['cost'])
+                ? (float) $rental_data['rental_days_and_costs']['cost'] * $quantity
+                : $rent;
+
+            $addon_rent_total += $rent;
+            $addon_deposit_total += $deposit;
+            $addon_grand_total += $grand;
+            $addon_booking_cost += $booking_cost;
+
+            $addon_rows['trent_addon_' . $addon_id] = [
+                'text'   => $addon_product->get_name(),
+                'amount' => $rent,
+                'cost'   => wc_price($rent),
+            ];
+        }
+
+        if (empty($addon_rows)) {
+            return $response;
+        }
+
+        $summary = $response['price_breakdown'];
+        $updated = [];
+        $rows_inserted = false;
+
+        foreach ($summary as $key => $row) {
+            /*
+             * Show each add-on immediately before RnB's subtotal ("Sum").
+             * If that row is absent we insert before deposit/total below.
+             */
+            if (!$rows_inserted && $key === 'deposit_free_total') {
+                foreach ($addon_rows as $addon_key => $addon_row) {
+                    $updated[$addon_key] = $addon_row;
+                }
+                $rows_inserted = true;
+            }
+
+            if (in_array($key, ['deposit_free_total'], true) && is_array($row)) {
+                $row['amount'] = (float) ($row['amount'] ?? 0) + $addon_rent_total;
+                $row['cost'] = wc_price($row['amount']);
+            }
+
+            if ($key === 'deposit' && is_array($row)) {
+                $row['amount'] = (float) ($row['amount'] ?? 0) + $addon_deposit_total;
+                $row['cost'] = wc_price($row['amount']);
+            }
+
+            if (in_array($key, ['total', 'grand_total', 'quote_total'], true) && is_array($row)) {
+                $row['amount'] = (float) ($row['amount'] ?? 0) + $addon_grand_total;
+                $row['cost'] = wc_price($row['amount']);
+            }
+
+            if (!$rows_inserted && in_array($key, ['deposit', 'total', 'grand_total', 'quote_total'], true)) {
+                foreach ($addon_rows as $addon_key => $addon_row) {
+                    $updated[$addon_key] = $addon_row;
+                }
+                $rows_inserted = true;
+            }
+
+            $updated[$key] = $row;
+        }
+
+        if (!$rows_inserted) {
+            foreach ($addon_rows as $addon_key => $addon_row) {
+                $updated[$addon_key] = $addon_row;
+            }
+        }
+
+        /*
+         * A main product without its own deposit may not have a deposit row.
+         * Add one when an add-on has a refundable deposit.
+         */
+        if ($addon_deposit_total > 0 && !isset($updated['deposit'])) {
+            $general = redq_rental_get_settings(
+                isset($form['add-to-cart']) ? absint($form['add-to-cart']) : 0,
+                'general'
+            );
+            $deposit_label = !empty($general['general']['deposit_amount'])
+                ? $general['general']['deposit_amount']
+                : __('Sikkerhetsbeløp', 'redq-rental');
+
+            $before_total = [];
+            $inserted = false;
+            foreach ($updated as $key => $row) {
+                if (!$inserted && in_array($key, ['total', 'grand_total', 'quote_total'], true)) {
+                    $before_total['deposit'] = [
+                        'text'   => $deposit_label,
+                        'amount' => $addon_deposit_total,
+                        'cost'   => wc_price($addon_deposit_total),
+                    ];
+                    $inserted = true;
+                }
+                $before_total[$key] = $row;
+            }
+            if (!$inserted) {
+                $before_total['deposit'] = [
+                    'text'   => $deposit_label,
+                    'amount' => $addon_deposit_total,
+                    'cost'   => wc_price($addon_deposit_total),
+                ];
+            }
+            $updated = $before_total;
+        }
+
+        $response['price_breakdown'] = $updated;
+
+        if (isset($response['total_cost'])) {
+            $main_booking_cost = isset($posted_data['rental_days_and_costs']['cost'])
+                ? (float) $posted_data['rental_days_and_costs']['cost']
+                : 0.0;
+            $main_quantity = !empty($posted_data['quantity'])
+                ? max(1, (int) $posted_data['quantity'])
+                : 1;
+            $response['total_cost'] = wc_price(($main_booking_cost * $main_quantity) + $addon_booking_cost);
+        }
+
+        $response['trent_addons'] = [
+            'rent_total'    => $addon_rent_total,
+            'deposit_total' => $addon_deposit_total,
+            'total'         => $addon_grand_total,
+        ];
+
+        return $response;
     }
 
     /**
@@ -320,8 +525,23 @@ class ProductAddonManager extends Booking_Manager
          * later by Ajax::rnb_quote_booking_data(), preventing the add-on from
          * being counted once on the main line and then again on its own line.
          */
-        $base_quote_price = isset($_POST['quote_price'])
-            ? (float) wc_format_decimal(wp_unslash($_POST['quote_price']))
+        /*
+         * Calculate the main product total again on the server instead of
+         * trusting the browser's hidden quote_price. The live price already
+         * includes add-ons, so adding addon_total to that client value would
+         * count the extras twice.
+         */
+        $main_form = $this->rearrange_form_data($source_form);
+        $main_rental_data = $this->prepare_form_data($main_form, false);
+        $main_breakdown = isset($main_rental_data['rental_days_and_costs']['price_breakdown'])
+            ? $main_rental_data['rental_days_and_costs']['price_breakdown']
+            : [];
+        $main_quantity = !empty($main_rental_data['quantity'])
+            ? max(1, (int) $main_rental_data['quantity'])
+            : 1;
+
+        $base_quote_price = isset($main_breakdown['total'])
+            ? (float) $main_breakdown['total'] * $main_quantity
             : 0.0;
 
         $_POST['quote_price'] = wc_format_decimal(
