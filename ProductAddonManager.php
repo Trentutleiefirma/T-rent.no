@@ -768,9 +768,20 @@ class ProductAddonManager extends Booking_Manager
                 continue;
             }
 
-            $name = rtrim((string) $field['name'], '[]');
+            $raw_name = (string) $field['name'];
+            $is_array_field = substr($raw_name, -2) === '[]';
+            $name = $is_array_field ? substr($raw_name, 0, -2) : $raw_name;
 
             if ($name === 'trent_addon_products') {
+                continue;
+            }
+
+            if ($is_array_field) {
+                if (!isset($source[$name]) || !is_array($source[$name])) {
+                    $source[$name] = [];
+                }
+
+                $source[$name][] = $field['value'];
                 continue;
             }
 
