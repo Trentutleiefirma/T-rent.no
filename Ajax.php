@@ -221,19 +221,33 @@ class Ajax extends Booking_Manager
         $ajax_data = $this->prepare_form_data($posted_data);
 
         /*
-         * _quote_price may include extra products added by ProductAddonManager.
-         * The main cart line must still use only the main product's original
-         * quoted amount, otherwise add-on rent/deposit would be counted twice.
+         * _quote_price is the CURRENT approved quote total and may include
+         * add-on products. Keep the add-ons on their own cart lines by
+         * subtracting the exact add-on total saved with the quote.
+         *
+         * This deliberately prefers the current _quote_price over the original
+         * base price, so an admin adjustment to the quote is respected at
+         * checkout instead of silently reverting the main product to its
+         * originally calculated amount.
          */
-        $cost = floatval(get_post_meta($quote_id, '_quote_price', true));
+        $quote_total = floatval(get_post_meta($quote_id, '_quote_price', true));
+        $addon_quote_total = get_post_meta($quote_id, '_trent_addon_quote_total', true);
         $base_quote_price = get_post_meta($quote_id, '_trent_addon_base_quote_price', true);
-        if ($base_quote_price !== '') {
+
+        $cost = $quote_total;
+
+        if ($addon_quote_total !== '') {
+            $cost = max(0, $quote_total - floatval($addon_quote_total));
+        } elseif ($base_quote_price !== '') {
+            // Backward-compatible fallback for quotes saved by the earlier fix.
             $cost = floatval($base_quote_price);
         }
 
         $cost_details = $ajax_data['rental_days_and_costs']['price_breakdown'];
-        $deposit_total = $cost_details['deposit_total'];
-        $cost = $cost - $deposit_total;
+        $deposit_total = isset($cost_details['deposit_total'])
+            ? floatval($cost_details['deposit_total'])
+            : 0.0;
+        $cost = max(0, $cost - $deposit_total);
 
         $instance_payment = $this->handle_instant_payment(['deposit_free_total' => $cost], $display);
         $due_payment = $cost - $instance_payment;
