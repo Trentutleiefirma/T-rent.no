@@ -25,6 +25,13 @@ class ProductAddonManager extends Booking_Manager
     private static $adding_addons = false;
     private static $selector_rendered = false;
 
+    /**
+     * Temporary data calculated during the RFQ AJAX request. WordPress creates
+     * the request_quote post later in the same request, where we persist this
+     * context as private post meta.
+     */
+    private $pending_quote_context = null;
+
     public function __construct()
     {
         /*
@@ -46,6 +53,12 @@ class ProductAddonManager extends Booking_Manager
          */
         add_action('wp_ajax_redq_request_for_a_quote', [$this, 'validate_quote_addons'], 1);
         add_action('wp_ajax_nopriv_redq_request_for_a_quote', [$this, 'validate_quote_addons'], 1);
+
+        /*
+         * validate_quote_addons() runs before RnB creates the request_quote post.
+         * Persist the exact add-on calculation as soon as that post is inserted.
+         */
+        add_action('save_post_request_quote', [$this, 'persist_pending_quote_context'], 5, 3);
 
         /*
          * Handles both direct booking and accepted quote -> cart.
@@ -234,6 +247,8 @@ class ProductAddonManager extends Booking_Manager
 
         $source_form = $this->serialized_form_to_source($form_data);
         $names = [];
+        $snapshot = [];
+        $addon_total = 0.0;
 
         foreach ($selected_ids as $addon_id) {
             $addon_product = wc_get_product($addon_id);
@@ -260,8 +275,21 @@ class ProductAddonManager extends Booking_Manager
             }
 
             $breakdown = $calculated['rental_data']['rental_days_and_costs']['price_breakdown'];
-            $rent = isset($breakdown['deposit_free_total']) ? (float) $breakdown['deposit_free_total'] : 0;
-            $deposit = isset($breakdown['deposit_total']) ? (float) $breakdown['deposit_total'] : 0;
+            $quantity = !empty($calculated['rental_data']['quantity'])
+                ? max(1, (int) $calculated['rental_data']['quantity'])
+                : 1;
+            $rent = isset($breakdown['deposit_free_total']) ? (float) $breakdown['deposit_free_total'] * $quantity : 0;
+            $deposit = isset($breakdown['deposit_total']) ? (float) $breakdown['deposit_total'] * $quantity : 0;
+
+            $addon_total += $rent + $deposit;
+
+            $snapshot[(int) $addon_id] = [
+                'product_id'  => (int) $addon_id,
+                'form'        => $calculated['form'],
+                'rental_data' => $calculated['rental_data'],
+                'rent_total'  => $rent,
+                'deposit_total' => $deposit,
+            ];
 
             $names[] = sprintf(
                 '%s (leie %s, depositum %s)',
@@ -282,6 +310,66 @@ class ProductAddonManager extends Booking_Manager
                 'value' => implode(', ', $names),
             ];
         }
+
+        /*
+         * RnB saves quote_price as the official quote total. Its normal value
+         * contains the main product including its deposit. Add the complete
+         * add-on total (rent + deposit) here so the quote itself is correct.
+         *
+         * The original main-product quote price is kept privately and is used
+         * later by Ajax::rnb_quote_booking_data(), preventing the add-on from
+         * being counted once on the main line and then again on its own line.
+         */
+        $base_quote_price = isset($_POST['quote_price'])
+            ? (float) wc_format_decimal(wp_unslash($_POST['quote_price']))
+            : 0.0;
+
+        $_POST['quote_price'] = wc_format_decimal(
+            $base_quote_price + $addon_total,
+            wc_get_price_decimals()
+        );
+
+        $this->pending_quote_context = [
+            'base_quote_price' => $base_quote_price,
+            'addon_total'      => $addon_total,
+            'snapshot'         => $snapshot,
+        ];
+    }
+
+    /**
+     * Save the quote calculation produced by validate_quote_addons().
+     *
+     * This intentionally uses private post meta instead of adding technical
+     * fields to order_quote_meta, so customers/admin do not see internal data.
+     */
+    public function persist_pending_quote_context($post_id, $post, $update)
+    {
+        if (
+            empty($this->pending_quote_context)
+            || !is_object($post)
+            || $post->post_type !== 'request_quote'
+            || wp_is_post_revision($post_id)
+        ) {
+            return;
+        }
+
+        update_post_meta(
+            $post_id,
+            '_trent_addon_base_quote_price',
+            (float) $this->pending_quote_context['base_quote_price']
+        );
+        update_post_meta(
+            $post_id,
+            '_trent_addon_quote_total',
+            (float) $this->pending_quote_context['addon_total']
+        );
+        update_post_meta(
+            $post_id,
+            '_trent_addon_snapshot',
+            $this->pending_quote_context['snapshot']
+        );
+
+        $this->pending_quote_context = null;
     }
 
     /**
@@ -297,12 +385,19 @@ class ProductAddonManager extends Booking_Manager
             ? absint($cart_item_data['rental_data']['quote_id'])
             : 0;
 
+        $quote_snapshot = [];
+
         if ($quote_id) {
             $selected_ids = $this->get_quote_addon_ids($quote_id);
             $source_form = !empty($cart_item_data['rental_data']['posted_data'])
                 && is_array($cart_item_data['rental_data']['posted_data'])
                 ? $cart_item_data['rental_data']['posted_data']
                 : [];
+
+            $stored_snapshot = get_post_meta($quote_id, '_trent_addon_snapshot', true);
+            if (is_array($stored_snapshot)) {
+                $quote_snapshot = $stored_snapshot;
+            }
         } else {
             if (empty($_POST['trent_addon_products']) || !is_array($_POST['trent_addon_products'])) {
                 return;
@@ -355,7 +450,29 @@ class ProductAddonManager extends Booking_Manager
                     continue;
                 }
 
-                $calculated = $this->prepare_addon_rental_data($source_form, $addon_id, true);
+                $calculated = null;
+
+                /*
+                 * For an accepted quote, use the exact calculation saved when
+                 * the request was sent. This keeps the quoted rent/deposit
+                 * stable even if product pricing is edited before payment.
+                 */
+                if (
+                    $quote_id
+                    && isset($quote_snapshot[$addon_id])
+                    && is_array($quote_snapshot[$addon_id])
+                    && !empty($quote_snapshot[$addon_id]['form'])
+                    && is_array($quote_snapshot[$addon_id]['form'])
+                    && !empty($quote_snapshot[$addon_id]['rental_data'])
+                    && is_array($quote_snapshot[$addon_id]['rental_data'])
+                ) {
+                    $calculated = [
+                        'form'        => $quote_snapshot[$addon_id]['form'],
+                        'rental_data' => $quote_snapshot[$addon_id]['rental_data'],
+                    ];
+                } else {
+                    $calculated = $this->prepare_addon_rental_data($source_form, $addon_id, true);
+                }
 
                 if (is_wp_error($calculated)) {
                     $failed_names[] = $addon_product->get_name();
