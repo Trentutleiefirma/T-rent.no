@@ -74,18 +74,36 @@ class ProductAddonManager extends Booking_Manager
             return;
         }
 
-        if (empty($_POST['trent_addon_products']) || !is_array($_POST['trent_addon_products'])) {
-            return;
-        }
+        $quote_id = !empty($cart_item_data['rental_data']['quote_id'])
+            ? absint($cart_item_data['rental_data']['quote_id'])
+            : 0;
 
-        if (
-            empty($_POST['trent_addon_nonce'])
-            || !wp_verify_nonce(
-                sanitize_text_field(wp_unslash($_POST['trent_addon_nonce'])),
-                'trent_addon_booking'
-            )
-        ) {
-            return;
+        if ($quote_id) {
+            $selected_ids = $this->get_quote_addon_ids($quote_id);
+            $source_form = !empty($cart_item_data['rental_data']['posted_data'])
+                && is_array($cart_item_data['rental_data']['posted_data'])
+                ? $cart_item_data['rental_data']['posted_data']
+                : [];
+        } else {
+            if (empty($_POST['trent_addon_products']) || !is_array($_POST['trent_addon_products'])) {
+                return;
+            }
+
+            if (
+                empty($_POST['trent_addon_nonce'])
+                || !wp_verify_nonce(
+                    sanitize_text_field(wp_unslash($_POST['trent_addon_nonce'])),
+                    'trent_addon_booking'
+                )
+            ) {
+                return;
+            }
+
+            $selected_ids = array_values(array_unique(array_filter(array_map(
+                'absint',
+                wp_unslash($_POST['trent_addon_products'])
+            ))));
+            $source_form = $_POST;
         }
 
         $main_product = wc_get_product($product_id);
@@ -93,16 +111,12 @@ class ProductAddonManager extends Booking_Manager
             return;
         }
 
-        $selected_ids = array_values(array_unique(array_filter(array_map(
-            'absint',
-            wp_unslash($_POST['trent_addon_products'])
-        ))));
-
         if (empty($selected_ids)) {
             return;
         }
 
         $original_post = $_POST;
+        $source_form = is_array($source_form) ? $source_form : [];
         $added_names = [];
         $failed_names = [];
 
@@ -125,7 +139,7 @@ class ProductAddonManager extends Booking_Manager
                     continue;
                 }
 
-                $addon_form = $this->build_addon_form($original_post, $addon_id);
+                $addon_form = $this->build_addon_form($source_form, $addon_id);
 
                 if (is_wp_error($addon_form)) {
                     $failed_names[] = $addon_product->get_name();
@@ -173,6 +187,42 @@ class ProductAddonManager extends Booking_Manager
                 'error'
             );
         }
+    }
+
+    /**
+     * Read extra product selections stored in the original RnB quote request.
+     *
+     * rnb-rfq.js serializes the whole booking form, so our checkbox values are
+     * already preserved in unformatted_order_quote_meta without changing the
+     * normal RequestForQuote flow.
+     */
+    private function get_quote_addon_ids($quote_id)
+    {
+        $raw = get_post_meta($quote_id, 'unformatted_order_quote_meta', true);
+        $form_data = json_decode($raw, true);
+
+        if (!is_array($form_data)) {
+            return [];
+        }
+
+        $ids = [];
+
+        foreach ($form_data as $field) {
+            if (
+                empty($field['name'])
+                || $field['name'] !== 'trent_addon_products[]'
+                || !isset($field['value'])
+            ) {
+                continue;
+            }
+
+            $id = absint($field['value']);
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+
+        return array_values(array_unique($ids));
     }
 
     /**
