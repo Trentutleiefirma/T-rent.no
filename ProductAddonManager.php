@@ -9,30 +9,59 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Allow customers to add extra rental products to the same booking.
+ * T-Rent: add extra rental products to the same RnB booking/quote.
  *
- * The main RnB product is booked normally. Selected extra rental products are
- * then added to the same WooCommerce cart with the same pickup/return dates.
- * Each extra product still runs through RnB availability validation and its own
- * rental price calculation.
+ * The selector is rendered inside RnB's own booking-button flow, so it also
+ * appears when a product only uses "Forespørsel" and has no direct Book button.
+ *
+ * Selected product IDs are part of the normal RnB quote form. When an accepted
+ * quote is later converted to the cart, the extra products are added with the
+ * same pickup/return dates, but with their own inventory and price calculation.
  */
 class ProductAddonManager extends Booking_Manager
 {
     use Error_Trait;
 
     private static $adding_addons = false;
+    private static $selector_rendered = false;
 
     public function __construct()
     {
+        /*
+         * Primary placement: immediately before the RnB booking/quote buttons.
+         * This is the important hook for T-Rent because the products use RFQ.
+         */
+        add_action('rnb_plain_booking_button', [$this, 'render_addon_selector'], 5);
+
+        /*
+         * Fallbacks for RnB layouts/themes that place the booking content
+         * differently. render_addon_selector() has a duplicate guard.
+         */
+        add_action('rnb_main_rental_content', [$this, 'render_addon_selector'], 65);
         add_action('woocommerce_before_add_to_cart_button', [$this, 'render_addon_selector'], 6);
+
+        /*
+         * Validate selected extra products before RnB creates the quote.
+         * RnB's own request callback is registered at the default priority 10.
+         */
+        add_action('wp_ajax_redq_request_for_a_quote', [$this, 'validate_quote_addons'], 1);
+        add_action('wp_ajax_nopriv_redq_request_for_a_quote', [$this, 'validate_quote_addons'], 1);
+
+        /*
+         * Handles both direct booking and accepted quote -> cart.
+         */
         add_action('woocommerce_add_to_cart', [$this, 'add_selected_products'], 30, 6);
     }
 
     /**
-     * Show available rental products as optional additions on a rental product.
+     * Visible selector on the product booking page.
      */
     public function render_addon_selector()
     {
+        if (self::$selector_rendered) {
+            return;
+        }
+
         global $product;
 
         if (!$product || !$product->is_type('redq_rental')) {
@@ -45,28 +74,184 @@ class ProductAddonManager extends Booking_Manager
             return;
         }
 
+        self::$selector_rendered = true;
+
         wp_nonce_field('trent_addon_booking', 'trent_addon_nonce');
 
-        echo '<div class="trent-booking-addons" style="margin:18px 0;padding:14px;border:1px solid #e5e5e5;border-radius:6px;">';
-        echo '<details>';
-        echo '<summary style="cursor:pointer;font-weight:600;">' . esc_html__('Legg til flere produkter', 'redq-rental') . '</summary>';
-        echo '<p style="margin:10px 0 12px;">' . esc_html__('Valgte produkter får samme leiedatoer automatisk. Pris og tilgjengelighet beregnes separat for hvert produkt.', 'redq-rental') . '</p>';
+        echo '<div class="trent-booking-addons" style="margin:16px 0;padding:14px;border:1px solid rgba(0,0,0,.18);border-radius:6px;">';
+        echo '<label for="trent-addon-product-picker" style="display:block;font-weight:700;margin-bottom:7px;">'
+            . esc_html__('Legg til produkt', 'redq-rental')
+            . '</label>';
+
+        echo '<div style="display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;">';
+        echo '<select id="trent-addon-product-picker" style="flex:1 1 230px;min-width:0;">';
+        echo '<option value="">' . esc_html__('Velg produkt', 'redq-rental') . '</option>';
 
         foreach ($products as $addon_product) {
-            $addon_id = (int) $addon_product->get_id();
-
-            echo '<label style="display:flex;align-items:flex-start;gap:8px;margin:8px 0;">';
-            echo '<input type="checkbox" name="trent_addon_products[]" value="' . esc_attr($addon_id) . '" style="margin-top:4px;">';
-            echo '<span>' . esc_html($addon_product->get_name()) . '</span>';
-            echo '</label>';
+            echo '<option value="' . esc_attr($addon_product->get_id()) . '">'
+                . esc_html($addon_product->get_name())
+                . '</option>';
         }
 
-        echo '</details>';
+        echo '</select>';
+        echo '<button type="button" id="trent-addon-product-add" class="button" style="flex:0 0 auto;">'
+            . esc_html__('Legg til', 'redq-rental')
+            . '</button>';
         echo '</div>';
+
+        echo '<div id="trent-addon-selected" style="margin-top:8px;"></div>';
+        echo '<small style="display:block;margin-top:7px;opacity:.8;">'
+            . esc_html__('Tilleggsproduktet bruker samme hente- og returdato. Tilgjengelighet kontrolleres separat.', 'redq-rental')
+            . '</small>';
+        echo '</div>';
+
+        ?>
+        <script>
+        (function () {
+            function initTrentAddons() {
+                var picker = document.getElementById('trent-addon-product-picker');
+                var addButton = document.getElementById('trent-addon-product-add');
+                var selected = document.getElementById('trent-addon-selected');
+
+                if (!picker || !addButton || !selected || addButton.dataset.trentReady === '1') {
+                    return;
+                }
+
+                addButton.dataset.trentReady = '1';
+
+                function hasProduct(id) {
+                    return !!selected.querySelector('input[name="trent_addon_products[]"][value="' + id + '"]');
+                }
+
+                function addProduct(id, label) {
+                    if (!id || hasProduct(id)) {
+                        return;
+                    }
+
+                    var row = document.createElement('div');
+                    row.className = 'trent-addon-row';
+                    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 9px;margin:5px 0;border:1px solid rgba(0,0,0,.12);border-radius:4px;';
+
+                    var text = document.createElement('span');
+                    text.textContent = label;
+
+                    var hidden = document.createElement('input');
+                    hidden.type = 'hidden';
+                    hidden.name = 'trent_addon_products[]';
+                    hidden.value = id;
+
+                    var remove = document.createElement('button');
+                    remove.type = 'button';
+                    remove.className = 'button';
+                    remove.textContent = '<?php echo esc_js(__('Fjern', 'redq-rental')); ?>';
+                    remove.style.cssText = 'padding:3px 8px;min-height:auto;';
+                    remove.addEventListener('click', function () {
+                        row.remove();
+                    });
+
+                    row.appendChild(text);
+                    row.appendChild(hidden);
+                    row.appendChild(remove);
+                    selected.appendChild(row);
+                }
+
+                addButton.addEventListener('click', function () {
+                    var option = picker.options[picker.selectedIndex];
+
+                    if (!option || !option.value) {
+                        return;
+                    }
+
+                    addProduct(option.value, option.text);
+                    picker.value = '';
+                });
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initTrentAddons);
+            } else {
+                initTrentAddons();
+            }
+        })();
+        </script>
+        <?php
     }
 
     /**
-     * Add selected extra products after the main rental product has been added.
+     * Validate add-ons before RnB saves a quote.
+     *
+     * This does not reserve them yet; it prevents a quote from being sent with
+     * an already unavailable extra product. Availability is checked again when
+     * the accepted quote is converted to the cart.
+     */
+    public function validate_quote_addons()
+    {
+        if (
+            empty($_POST['nonce'])
+            || !wp_verify_nonce(
+                sanitize_text_field(wp_unslash($_POST['nonce'])),
+                'rnb_rfq_nonce'
+            )
+        ) {
+            return;
+        }
+
+        if (empty($_POST['form_data']) || !is_array($_POST['form_data'])) {
+            return;
+        }
+
+        $form_data = wp_unslash($_POST['form_data']);
+        $selected_ids = $this->get_addon_ids_from_serialized_form($form_data);
+
+        if (empty($selected_ids)) {
+            return;
+        }
+
+        $source_form = $this->serialized_form_to_source($form_data);
+        $names = [];
+
+        foreach ($selected_ids as $addon_id) {
+            $addon_product = wc_get_product($addon_id);
+
+            if (!$addon_product || !$addon_product->is_type('redq_rental')) {
+                wp_send_json([
+                    'success'     => false,
+                    'status_code' => 400,
+                    'message'     => esc_html__('Ett av tilleggsproduktene finnes ikke lenger.', 'redq-rental'),
+                ]);
+            }
+
+            $addon_form = $this->build_addon_form($source_form, $addon_id);
+
+            if (is_wp_error($addon_form)) {
+                wp_send_json([
+                    'success'     => false,
+                    'status_code' => 400,
+                    'message'     => sprintf(
+                        esc_html__('%s er ikke tilgjengelig i valgt periode. Velg andre datoer eller fjern produktet.', 'redq-rental'),
+                        esc_html($addon_product->get_name())
+                    ),
+                ]);
+            }
+
+            $names[] = $addon_product->get_name();
+        }
+
+        /*
+         * Add one human-readable row to the quote data as well. The original
+         * trent_addon_products[] fields remain untouched and are what we use
+         * later when the quote is converted to the cart.
+         */
+        if (!empty($names)) {
+            $_POST['form_data'][] = [
+                'name'  => 'Tilleggsprodukter',
+                'value' => implode(', ', $names),
+            ];
+        }
+    }
+
+    /**
+     * Add selected extra products when the main rental item enters the cart.
      */
     public function add_selected_products($cart_item_key, $product_id, $quantity, $variation_id, $variation, $cart_item_data)
     {
@@ -103,15 +288,13 @@ class ProductAddonManager extends Booking_Manager
                 'absint',
                 wp_unslash($_POST['trent_addon_products'])
             ))));
+
             $source_form = $_POST;
         }
 
         $main_product = wc_get_product($product_id);
-        if (!$main_product || !$main_product->is_type('redq_rental')) {
-            return;
-        }
 
-        if (empty($selected_ids)) {
+        if (!$main_product || !$main_product->is_type('redq_rental') || empty($selected_ids)) {
             return;
         }
 
@@ -134,7 +317,6 @@ class ProductAddonManager extends Booking_Manager
                     !$addon_product
                     || !$addon_product->is_type('redq_rental')
                     || $addon_product->get_status() !== 'publish'
-                    || $addon_product->get_catalog_visibility() === 'hidden'
                 ) {
                     continue;
                 }
@@ -146,15 +328,12 @@ class ProductAddonManager extends Booking_Manager
                     continue;
                 }
 
-                // CartHandler reads the current request when it validates and
-                // creates rental_data, so temporarily present the extra product
-                // as the product being booked.
+                /*
+                 * CartHandler reads the current request to build rental_data.
+                 * Temporarily expose the extra product as the active RnB form.
+                 */
                 $_POST = $addon_form;
-
                 $added_key = WC()->cart->add_to_cart($addon_id, 1);
-
-                // Always restore the customer's original booking request before
-                // processing the next product or returning to WooCommerce.
                 $_POST = $original_post;
 
                 if ($added_key) {
@@ -190,11 +369,60 @@ class ProductAddonManager extends Booking_Manager
     }
 
     /**
-     * Read extra product selections stored in the original RnB quote request.
-     *
-     * rnb-rfq.js serializes the whole booking form, so our checkbox values are
-     * already preserved in unformatted_order_quote_meta without changing the
-     * normal RequestForQuote flow.
+     * Convert RnB/jQuery serializeArray() data to the date/time source we need.
+     */
+    private function serialized_form_to_source(array $form_data)
+    {
+        $source = [];
+
+        foreach ($form_data as $field) {
+            if (!is_array($field) || empty($field['name']) || !array_key_exists('value', $field)) {
+                continue;
+            }
+
+            $name = rtrim((string) $field['name'], '[]');
+
+            if ($name === 'trent_addon_products') {
+                continue;
+            }
+
+            if (!array_key_exists($name, $source)) {
+                $source[$name] = $field['value'];
+            }
+        }
+
+        return $source;
+    }
+
+    /**
+     * Product IDs selected on the product page.
+     */
+    private function get_addon_ids_from_serialized_form(array $form_data)
+    {
+        $ids = [];
+
+        foreach ($form_data as $field) {
+            if (
+                !is_array($field)
+                || empty($field['name'])
+                || $field['name'] !== 'trent_addon_products[]'
+                || !isset($field['value'])
+            ) {
+                continue;
+            }
+
+            $id = absint($field['value']);
+
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * Product IDs saved in the original quote form.
      */
     private function get_quote_addon_ids($quote_id)
     {
@@ -205,32 +433,14 @@ class ProductAddonManager extends Booking_Manager
             return [];
         }
 
-        $ids = [];
-
-        foreach ($form_data as $field) {
-            if (
-                empty($field['name'])
-                || $field['name'] !== 'trent_addon_products[]'
-                || !isset($field['value'])
-            ) {
-                continue;
-            }
-
-            $id = absint($field['value']);
-            if ($id > 0) {
-                $ids[] = $id;
-            }
-        }
-
-        return array_values(array_unique($ids));
+        return $this->get_addon_ids_from_serialized_form($form_data);
     }
 
     /**
-     * Build the minimal RnB request required for an extra rental product.
+     * Build a minimal valid RnB request for an extra product.
      *
-     * Product-specific extras/resources are intentionally not copied from the
-     * main product. Delivery/distance data is also not copied, so one booking
-     * does not accidentally charge the same delivery cost once per product.
+     * Dates/times are inherited. Inventory, required deposit and rental price
+     * are resolved for the extra product itself.
      */
     private function build_addon_form(array $source, $addon_id)
     {
@@ -239,9 +449,9 @@ class ProductAddonManager extends Booking_Manager
         }
 
         $form = [
-            'add-to-cart'       => (int) $addon_id,
-            'order_type'        => 'new_order',
-            'inventory_quantity'=> 1,
+            'add-to-cart'        => (int) $addon_id,
+            'order_type'         => 'new_order',
+            'inventory_quantity' => 1,
         ];
 
         foreach ([
@@ -277,6 +487,7 @@ class ProductAddonManager extends Booking_Manager
         }
 
         $inventory_ids = rnb_get_product_inventory_id($addon_id);
+
         if (empty($inventory_ids) || !is_array($inventory_ids)) {
             return new \WP_Error('missing_inventory');
         }
@@ -286,16 +497,19 @@ class ProductAddonManager extends Booking_Manager
             $candidate['booking_inventory'] = (int) $inventory_id;
 
             $required_deposits = $this->get_required_deposits((int) $inventory_id);
+
             if (!empty($required_deposits)) {
                 $candidate['security_deposites'] = $required_deposits;
             }
 
             $normalized = $this->rearrange_form_data($candidate);
+
             if (!is_array($normalized)) {
                 continue;
             }
 
             $errors = $this->handle_form($normalized);
+
             if (empty($errors)) {
                 return $normalized;
             }
@@ -305,7 +519,7 @@ class ProductAddonManager extends Booking_Manager
     }
 
     /**
-     * RnB marks non-clickable security deposits as mandatory.
+     * RnB marks non-clickable deposits as mandatory.
      */
     private function get_required_deposits($inventory_id)
     {
@@ -332,32 +546,34 @@ class ProductAddonManager extends Booking_Manager
     }
 
     /**
-     * Rental products that can be selected as additions.
+     * All published RnB rental products except the product currently viewed.
+     *
+     * Do NOT exclude WooCommerce catalog visibility "hidden": T-Rent can hide
+     * products from catalog/search while still wanting them available here.
      */
     private function get_available_addon_products($exclude_product_id)
     {
-        $products = wc_get_products([
-            'status'  => 'publish',
-            'limit'   => -1,
-            'orderby' => 'name',
-            'order'   => 'ASC',
-            'return'  => 'objects',
+        $product_ids = get_posts([
+            'post_type'      => 'product',
+            'post_status'    => 'publish',
+            'posts_per_page' => -1,
+            'orderby'        => 'title',
+            'order'          => 'ASC',
+            'fields'         => 'ids',
+            'post__not_in'   => [(int) $exclude_product_id],
         ]);
 
         $results = [];
 
-        foreach ($products as $candidate) {
-            if (
-                !$candidate
-                || (int) $candidate->get_id() === (int) $exclude_product_id
-                || !$candidate->is_type('redq_rental')
-                || $candidate->get_catalog_visibility() === 'hidden'
-            ) {
+        foreach ($product_ids as $product_id) {
+            $candidate = wc_get_product($product_id);
+
+            if (!$candidate || !$candidate->is_type('redq_rental')) {
                 continue;
             }
 
             $inventory_ids = function_exists('rnb_get_product_inventory_id')
-                ? rnb_get_product_inventory_id($candidate->get_id())
+                ? rnb_get_product_inventory_id($product_id)
                 : [];
 
             if (empty($inventory_ids)) {
