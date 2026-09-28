@@ -68,9 +68,17 @@ class ProductAddonManager extends Booking_Manager
             return;
         }
 
-        $products = $this->get_available_addon_products((int) $product->get_id());
+        $product_groups = $this->get_available_addon_products((int) $product->get_id());
 
-        if (empty($products)) {
+        $has_products = false;
+        foreach ($product_groups as $group_products) {
+            if (!empty($group_products)) {
+                $has_products = true;
+                break;
+            }
+        }
+
+        if (!$has_products) {
             return;
         }
 
@@ -87,10 +95,27 @@ class ProductAddonManager extends Booking_Manager
         echo '<select id="trent-addon-product-picker" style="flex:1 1 230px;min-width:0;">';
         echo '<option value="">' . esc_html__('Velg produkt', 'redq-rental') . '</option>';
 
-        foreach ($products as $addon_product) {
-            echo '<option value="' . esc_attr($addon_product->get_id()) . '">'
-                . esc_html($addon_product->get_name())
-                . '</option>';
+        $group_labels = [
+            'related' => __('Relaterte produkter', 'redq-rental'),
+            'linked'  => __('Koblede produkter', 'redq-rental'),
+            'other'   => __('Alle andre produkter', 'redq-rental'),
+        ];
+
+        foreach ($product_groups as $group_key => $group_products) {
+            if (empty($group_products)) {
+                continue;
+            }
+
+            $label = isset($group_labels[$group_key]) ? $group_labels[$group_key] : __('Produkter', 'redq-rental');
+            echo '<optgroup label="' . esc_attr($label) . '">';
+
+            foreach ($group_products as $addon_product) {
+                echo '<option value="' . esc_attr($addon_product->get_id()) . '">'
+                    . esc_html($addon_product->get_name())
+                    . '</option>';
+            }
+
+            echo '</optgroup>';
         }
 
         echo '</select>';
@@ -496,10 +521,10 @@ class ProductAddonManager extends Booking_Manager
             $candidate = $form;
             $candidate['booking_inventory'] = (int) $inventory_id;
 
-            $required_deposits = $this->get_required_deposits((int) $inventory_id);
+            $addon_deposits = $this->get_addon_deposits((int) $inventory_id);
 
-            if (!empty($required_deposits)) {
-                $candidate['security_deposites'] = $required_deposits;
+            if (!empty($addon_deposits)) {
+                $candidate['security_deposites'] = $addon_deposits;
             }
 
             $normalized = $this->rearrange_form_data($candidate);
@@ -519,41 +544,63 @@ class ProductAddonManager extends Booking_Manager
     }
 
     /**
-     * RnB marks non-clickable deposits as mandatory.
+     * Carry the selected add-on product's own RnB deposit configuration with it.
+     *
+     * The normal RnB product page allows a deposit term to be clickable, but an
+     * add-on product has no second booking form where the customer can select it.
+     * Therefore every deposit term assigned to the chosen inventory is included
+     * for the add-on. RnB then calculates the refundable deposit amount normally.
      */
-    private function get_required_deposits($inventory_id)
+    private function get_addon_deposits($inventory_id)
     {
-        $required = [];
+        $deposit_ids = [];
         $deposits = get_the_terms($inventory_id, 'deposite');
 
         if (empty($deposits) || is_wp_error($deposits)) {
-            return $required;
+            return $deposit_ids;
         }
 
         foreach ($deposits as $deposit) {
-            $clickable = get_term_meta(
-                $deposit->term_id,
-                'inventory_sd_price_clickable_term_meta',
-                true
-            );
-
-            if ($clickable === 'no') {
-                $required[] = (int) $deposit->term_id;
-            }
+            $deposit_ids[] = (int) $deposit->term_id;
         }
 
-        return $required;
+        return array_values(array_unique(array_filter($deposit_ids)));
     }
 
     /**
-     * All published RnB rental products except the product currently viewed.
+     * Prioritise useful add-ons instead of presenting one long alphabetical list.
      *
-     * Do NOT exclude WooCommerce catalog visibility "hidden": T-Rent can hide
-     * products from catalog/search while still wanting them available here.
+     * 1. WooCommerce related products (category/tag relation)
+     * 2. Manually linked products (upsells + cross-sells)
+     * 3. All remaining published RnB rental products
+     *
+     * A product is shown only once. Hidden catalog products are intentionally
+     * allowed because T-Rent may hide bookable products from Google/catalog.
      */
     private function get_available_addon_products($exclude_product_id)
     {
-        $product_ids = get_posts([
+        $current = wc_get_product($exclude_product_id);
+
+        $related_ids = function_exists('wc_get_related_products')
+            ? wc_get_related_products($exclude_product_id, 20, [$exclude_product_id])
+            : [];
+
+        $linked_ids = [];
+
+        if ($current) {
+            $linked_ids = array_merge(
+                method_exists($current, 'get_upsell_ids') ? $current->get_upsell_ids() : [],
+                method_exists($current, 'get_cross_sell_ids') ? $current->get_cross_sell_ids() : []
+            );
+        }
+
+        $related_ids = array_values(array_unique(array_map('absint', $related_ids)));
+        $linked_ids  = array_values(array_unique(array_map('absint', $linked_ids)));
+
+        // Related products have first priority, so remove duplicates from linked.
+        $linked_ids = array_values(array_diff($linked_ids, $related_ids));
+
+        $all_ids = get_posts([
             'post_type'      => 'product',
             'post_status'    => 'publish',
             'posts_per_page' => -1,
@@ -563,12 +610,37 @@ class ProductAddonManager extends Booking_Manager
             'post__not_in'   => [(int) $exclude_product_id],
         ]);
 
+        $used_ids = array_merge($related_ids, $linked_ids);
+        $other_ids = array_values(array_diff(array_map('absint', $all_ids), $used_ids));
+
+        return [
+            'related' => $this->prepare_addon_product_group($related_ids, $exclude_product_id),
+            'linked'  => $this->prepare_addon_product_group($linked_ids, $exclude_product_id),
+            'other'   => $this->prepare_addon_product_group($other_ids, $exclude_product_id),
+        ];
+    }
+
+    /**
+     * Keep only published RnB rental products that actually have inventory.
+     */
+    private function prepare_addon_product_group(array $product_ids, $exclude_product_id)
+    {
         $results = [];
 
         foreach ($product_ids as $product_id) {
+            $product_id = absint($product_id);
+
+            if (!$product_id || $product_id === (int) $exclude_product_id) {
+                continue;
+            }
+
             $candidate = wc_get_product($product_id);
 
-            if (!$candidate || !$candidate->is_type('redq_rental')) {
+            if (
+                !$candidate
+                || !$candidate->is_type('redq_rental')
+                || $candidate->get_status() !== 'publish'
+            ) {
                 continue;
             }
 
@@ -582,6 +654,10 @@ class ProductAddonManager extends Booking_Manager
 
             $results[] = $candidate;
         }
+
+        usort($results, function ($a, $b) {
+            return strnatcasecmp($a->get_name(), $b->get_name());
+        });
 
         return $results;
     }
