@@ -249,6 +249,11 @@ class ProductAddonManager extends Booking_Manager
             : [];
 
         $selected_ids = array_values(array_unique(array_filter(array_map('absint', $raw_ids))));
+        $main_product_id = isset($form['add-to-cart']) ? absint($form['add-to-cart']) : 0;
+
+        if ($main_product_id) {
+            $selected_ids = array_values(array_diff($selected_ids, [$main_product_id]));
+        }
 
         if (empty($selected_ids) || empty($response['price_breakdown']) || !is_array($response['price_breakdown'])) {
             return $response;
@@ -451,6 +456,16 @@ class ProductAddonManager extends Booking_Manager
         }
 
         $source_form = $this->serialized_form_to_source($form_data);
+        $main_product_id = isset($source_form['add-to-cart']) ? absint($source_form['add-to-cart']) : 0;
+
+        if ($main_product_id) {
+            $selected_ids = array_values(array_diff($selected_ids, [$main_product_id]));
+        }
+
+        if (empty($selected_ids)) {
+            return;
+        }
+
         $names = [];
         $snapshot = [];
         $addon_total = 0.0;
