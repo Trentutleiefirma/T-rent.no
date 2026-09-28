@@ -24,6 +24,7 @@ class ProductAddonManager extends Booking_Manager
 
     private static $adding_addons = false;
     private static $selector_rendered = false;
+    private static $pending_quote_snapshot = [];
 
     public function __construct()
     {
@@ -52,6 +53,13 @@ class ProductAddonManager extends Booking_Manager
          */
         add_action('wp_ajax_trent_rnb_addon_quote_data', [$this, 'ajax_addon_quote_data']);
         add_action('wp_ajax_nopriv_trent_rnb_addon_quote_data', [$this, 'ajax_addon_quote_data']);
+
+        /*
+         * Save quoted add-on financial data as private quote meta. This keeps
+         * add-on price/deposit fixed to the accepted quote without exposing a
+         * technical JSON field in the customer's quote form.
+         */
+        add_action('save_post_request_quote', [$this, 'save_pending_quote_snapshot'], 5, 3);
 
         /*
          * Handles both direct booking and accepted quote -> cart.
@@ -457,6 +465,7 @@ class ProductAddonManager extends Booking_Manager
 
         $addon_total = 0;
         $lines = [];
+        $snapshots = [];
 
         foreach ($selected_ids as $addon_id) {
             $addon_product = wc_get_product($addon_id);
@@ -488,6 +497,11 @@ class ProductAddonManager extends Booking_Manager
             $total = isset($breakdown['total']) ? (float) $breakdown['total'] : ($rental + $deposit);
 
             $addon_total += $total;
+            $snapshots[(int) $addon_id] = [
+                'product_id'            => (int) $addon_id,
+                'rental_days_and_costs' => $calculated['rental_data']['rental_days_and_costs'],
+            ];
+
             $lines[] = sprintf(
                 '%s – leie %s, depositum %s',
                 $addon_product->get_name(),
@@ -531,7 +545,33 @@ class ProductAddonManager extends Booking_Manager
             ];
         }
 
+        self::$pending_quote_snapshot = $snapshots;
         $_POST['form_data'] = $form_data;
+    }
+
+    /**
+     * Save the server-calculated add-on pricing/deposit snapshot on the quote
+     * post at creation time. The normal RnB RequestForQuote handler creates the
+     * request_quote post after validate_quote_addons() has run.
+     */
+    public function save_pending_quote_snapshot($post_id, $post, $update)
+    {
+        if (
+            $update
+            || !$post
+            || $post->post_type !== 'request_quote'
+            || empty(self::$pending_quote_snapshot)
+        ) {
+            return;
+        }
+
+        update_post_meta(
+            $post_id,
+            '_trent_addon_quote_snapshot',
+            wp_json_encode(self::$pending_quote_snapshot)
+        );
+
+        self::$pending_quote_snapshot = [];
     }
 
     /**
@@ -614,6 +654,16 @@ class ProductAddonManager extends Booking_Manager
 
                 $addon_form = $calculated['form'];
                 $addon_rental_data = $calculated['rental_data'];
+
+                if ($quote_id) {
+                    $quoted_snapshot = $this->get_quote_addon_snapshot($quote_id, $addon_id);
+                    if (!empty($quoted_snapshot)) {
+                        $addon_rental_data = $this->apply_quote_addon_snapshot(
+                            $addon_rental_data,
+                            $quoted_snapshot
+                        );
+                    }
+                }
 
                 /*
                  * Pass fully prepared rental_data explicitly. Giving the add-on
@@ -738,6 +788,60 @@ class ProductAddonManager extends Booking_Manager
         }
 
         return $this->get_addon_ids_from_serialized_form($form_data);
+    }
+
+    /**
+     * Get the add-on financial snapshot saved when the quote was submitted.
+     */
+    private function get_quote_addon_snapshot($quote_id, $addon_id)
+    {
+        $raw = get_post_meta($quote_id, '_trent_addon_quote_snapshot', true);
+
+        if (empty($raw)) {
+            return [];
+        }
+
+        $snapshots = json_decode($raw, true);
+
+        if (!is_array($snapshots)) {
+            return [];
+        }
+
+        $key = (string) absint($addon_id);
+
+        return isset($snapshots[$key]) && is_array($snapshots[$key])
+            ? $snapshots[$key]
+            : [];
+    }
+
+    /**
+     * Keep current availability/date data but use the financial values that
+     * belonged to the accepted quote. This mirrors RnB's own _quote_price
+     * behavior for the main product.
+     */
+    private function apply_quote_addon_snapshot(array $rental_data, array $snapshot)
+    {
+        if (
+            empty($snapshot['rental_days_and_costs'])
+            || !is_array($snapshot['rental_days_and_costs'])
+            || empty($rental_data['rental_days_and_costs'])
+            || !is_array($rental_data['rental_days_and_costs'])
+        ) {
+            return $rental_data;
+        }
+
+        $quoted = $snapshot['rental_days_and_costs'];
+        $current = $rental_data['rental_days_and_costs'];
+
+        foreach (['price_breakdown', 'cost', 'instant_pay', 'due_payment', 'line_total'] as $key) {
+            if (array_key_exists($key, $quoted)) {
+                $current[$key] = $quoted[$key];
+            }
+        }
+
+        $rental_data['rental_days_and_costs'] = $current;
+
+        return $rental_data;
     }
 
     /**
