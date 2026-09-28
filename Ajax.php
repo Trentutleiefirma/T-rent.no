@@ -220,7 +220,17 @@ class Ajax extends Booking_Manager
         $posted_data = $this->rearrange_form_data($posted_data);
         $ajax_data = $this->prepare_form_data($posted_data);
 
-        $cost            = floatval(get_post_meta($quote_id, '_quote_price', true));
+        /*
+         * _quote_price may include extra products added by ProductAddonManager.
+         * The main cart line must still use only the main product's original
+         * quoted amount, otherwise add-on rent/deposit would be counted twice.
+         */
+        $cost = floatval(get_post_meta($quote_id, '_quote_price', true));
+        $base_quote_price = get_post_meta($quote_id, '_trent_addon_base_quote_price', true);
+        if ($base_quote_price !== '') {
+            $cost = floatval($base_quote_price);
+        }
+
         $cost_details = $ajax_data['rental_days_and_costs']['price_breakdown'];
         $deposit_total = $cost_details['deposit_total'];
         $cost = $cost - $deposit_total;
