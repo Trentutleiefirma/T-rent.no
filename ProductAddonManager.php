@@ -246,9 +246,9 @@ class ProductAddonManager extends Booking_Manager
                 ]);
             }
 
-            $addon_form = $this->build_addon_form($source_form, $addon_id);
+            $calculated = $this->prepare_addon_rental_data($source_form, $addon_id, false);
 
-            if (is_wp_error($addon_form)) {
+            if (is_wp_error($calculated)) {
                 wp_send_json([
                     'success'     => false,
                     'status_code' => 400,
@@ -259,7 +259,16 @@ class ProductAddonManager extends Booking_Manager
                 ]);
             }
 
-            $names[] = $addon_product->get_name();
+            $breakdown = $calculated['rental_data']['rental_days_and_costs']['price_breakdown'];
+            $rent = isset($breakdown['deposit_free_total']) ? (float) $breakdown['deposit_free_total'] : 0;
+            $deposit = isset($breakdown['deposit_total']) ? (float) $breakdown['deposit_total'] : 0;
+
+            $names[] = sprintf(
+                '%s (leie %s, depositum %s)',
+                $addon_product->get_name(),
+                wp_strip_all_tags(wc_price($rent)),
+                wp_strip_all_tags(wc_price($deposit))
+            );
         }
 
         /*
@@ -346,19 +355,36 @@ class ProductAddonManager extends Booking_Manager
                     continue;
                 }
 
-                $addon_form = $this->build_addon_form($source_form, $addon_id);
+                $calculated = $this->prepare_addon_rental_data($source_form, $addon_id, true);
 
-                if (is_wp_error($addon_form)) {
+                if (is_wp_error($calculated)) {
                     $failed_names[] = $addon_product->get_name();
                     continue;
                 }
 
+                $addon_form = $calculated['form'];
+                $addon_rental_data = $calculated['rental_data'];
+                $cart_item_data = [];
+
                 /*
-                 * CartHandler reads the current request to build rental_data.
-                 * Temporarily expose the extra product as the active RnB form.
+                 * Accepted quote: CartHandler preserves rental_data when quote_id
+                 * exists. The add-on therefore keeps its own price + deposit.
                  */
+                if ($quote_id) {
+                    $addon_rental_data['quote_id'] = $quote_id;
+                    $addon_rental_data['posted_data'] = $addon_form;
+                    $cart_item_data['rental_data'] = $addon_rental_data;
+                    $cart_item_data['trent_addon_product'] = true;
+                }
+
                 $_POST = $addon_form;
-                $added_key = WC()->cart->add_to_cart($addon_id, 1);
+                $added_key = WC()->cart->add_to_cart(
+                    $addon_id,
+                    1,
+                    '',
+                    [],
+                    $cart_item_data
+                );
                 $_POST = $original_post;
 
                 if ($added_key) {
@@ -459,6 +485,34 @@ class ProductAddonManager extends Booking_Manager
         }
 
         return $this->get_addon_ids_from_serialized_form($form_data);
+    }
+
+    /**
+     * Build and calculate one add-on with its own RnB inventory, rental price
+     * and security deposit. build_addon_form() already normalizes + validates.
+     */
+    private function prepare_addon_rental_data(array $source, $addon_id, $add_cart = false)
+    {
+        $form = $this->build_addon_form($source, $addon_id);
+
+        if (is_wp_error($form)) {
+            return $form;
+        }
+
+        $rental_data = $this->prepare_form_data($form, $add_cart);
+
+        if (
+            !is_array($rental_data)
+            || empty($rental_data['rental_days_and_costs'])
+            || empty($rental_data['rental_days_and_costs']['price_breakdown'])
+        ) {
+            return new \WP_Error('addon_price_calculation_failed');
+        }
+
+        return [
+            'form'        => $form,
+            'rental_data' => $rental_data,
+        ];
     }
 
     /**
