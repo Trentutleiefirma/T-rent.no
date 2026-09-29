@@ -2,7 +2,7 @@
 /**
  * Plugin Name: T-Rent Utstyrskontroll
  * Description: Kontrollstatus for RnB-utstyr etter utleie, med egen kontrollside i WooCommerce.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: T-Rent
  * Requires Plugins: woocommerce
  */
@@ -214,23 +214,54 @@ class Manager
             }
         }
 
+        $filter = isset($_GET['t_rent_status'])
+            ? sanitize_key(wp_unslash($_GET['t_rent_status']))
+            : '';
+
+        if (!in_array($filter, ['pending', 'maintenance', 'out', 'ready'], true)) {
+            $filter = '';
+        }
+
+        $visible_rows = $rows;
+        if ($filter !== '') {
+            $visible_rows = array_values(array_filter($rows, function ($row) use ($filter) {
+                return isset($row['display_status']) && $row['display_status'] === $filter;
+            }));
+        }
+
         if ($message !== '') {
             echo '<div style="max-width:1180px;background:#ecfdf5;border:1px solid #6ee7b7;color:#065f46;border-radius:8px;padding:12px 14px;margin:0 0 16px;font-weight:600">' . esc_html($message) . '</div>';
         }
 
         echo '<style>';
-        echo '.tr-counts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 18px}.tr-count{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:13px}.tr-count b{display:block;font-size:25px}.tr-count span{color:#6b7280;font-size:13px}.tr-table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden}.tr-table th,.tr-table td{text-align:left;padding:12px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top}.tr-table th{background:#f9fafb;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280}.tr-table tr:last-child td{border-bottom:0}.tr-badge{display:inline-block;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:700;white-space:nowrap}.tr-badge-pending{background:#fff7ed;color:#9a3412}.tr-badge-maintenance{background:#fef2f2;color:#991b1b}.tr-badge-out{background:#eff6ff;color:#1e40af}.tr-badge-ready{background:#ecfdf5;color:#065f46}.tr-small{font-size:12px;line-height:1.45;color:#6b7280}.tr-actions{min-width:310px}.tr-form{display:grid;grid-template-columns:minmax(120px,1fr) auto auto;gap:6px;align-items:center}.tr-form input[type=text]{min-width:0;border:1px solid #d1d5db;border-radius:6px;padding:8px}.tr-btn{border:0;border-radius:6px;padding:8px 10px;font-weight:700;cursor:pointer}.tr-ready{background:#047857;color:#fff}.tr-hold{background:#fee2e2;color:#991b1b}.tr-reset{background:#ffedd5;color:#9a3412}.tr-empty{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:28px;text-align:center;color:#6b7280}@media(max-width:800px){.tr-counts{grid-template-columns:repeat(2,minmax(0,1fr))}.tr-table,.tr-table tbody,.tr-table tr,.tr-table td{display:block}.tr-table thead{display:none}.tr-table tr{border-bottom:7px solid #f3f4f6;padding:7px 0}.tr-table td{border:0;padding:6px 12px}.tr-table td:before{content:attr(data-label);display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:2px}.tr-actions{min-width:0}.tr-form{grid-template-columns:1fr 1fr}.tr-form input[type=text]{grid-column:1/-1}.tr-form .tr-wide{grid-column:1/-1}}';
+        echo '.tr-counts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 18px}.tr-count-link{display:block;color:inherit;text-decoration:none;border-radius:9px;outline:none}.tr-count{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:13px;transition:transform .12s ease,box-shadow .12s ease}.tr-count-link:active .tr-count{transform:scale(.98)}.tr-count-link:focus-visible .tr-count,.tr-count-active{box-shadow:0 0 0 3px rgba(37,99,235,.18)}.tr-count b{display:block;font-size:25px}.tr-count span{color:#6b7280;font-size:13px}.tr-filterbar{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px;margin:-6px 0 18px}.tr-filterbar strong{font-size:14px}.tr-filterbar a{font-size:14px;font-weight:700;color:#1d4ed8;text-decoration:none}.tr-table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden}.tr-table th,.tr-table td{text-align:left;padding:12px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top}.tr-table th{background:#f9fafb;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280}.tr-table tr:last-child td{border-bottom:0}.tr-badge{display:inline-block;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:700;white-space:nowrap}.tr-badge-pending{background:#fff7ed;color:#9a3412}.tr-badge-maintenance{background:#fef2f2;color:#991b1b}.tr-badge-out{background:#eff6ff;color:#1e40af}.tr-badge-ready{background:#ecfdf5;color:#065f46}.tr-small{font-size:12px;line-height:1.45;color:#6b7280}.tr-actions{min-width:310px}.tr-form{display:grid;grid-template-columns:minmax(120px,1fr) auto auto;gap:6px;align-items:center}.tr-form input[type=text]{min-width:0;border:1px solid #d1d5db;border-radius:6px;padding:8px}.tr-btn{border:0;border-radius:6px;padding:8px 10px;font-weight:700;cursor:pointer}.tr-ready{background:#047857;color:#fff}.tr-hold{background:#fee2e2;color:#991b1b}.tr-reset{background:#ffedd5;color:#9a3412}.tr-empty{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:28px;text-align:center;color:#6b7280}@media(max-width:800px){.tr-counts{grid-template-columns:repeat(2,minmax(0,1fr))}.tr-table,.tr-table tbody,.tr-table tr,.tr-table td{display:block}.tr-table thead{display:none}.tr-table tr{border-bottom:7px solid #f3f4f6;padding:7px 0}.tr-table td{border:0;padding:6px 12px}.tr-table td:before{content:attr(data-label);display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:2px}.tr-actions{min-width:0}.tr-form{grid-template-columns:1fr 1fr}.tr-form input[type=text]{grid-column:1/-1}.tr-form .tr-wide{grid-column:1/-1}}';
         echo '</style>';
 
         echo '<div class="tr-counts">';
-        $this->count_card($counts['pending'], 'Må kontrolleres', '#f97316');
-        $this->count_card($counts['maintenance'], 'Ikke klar', '#dc2626');
-        $this->count_card($counts['out'], 'Ute nå', '#2563eb');
-        $this->count_card($counts['ready'], 'Kontrollert og klar', '#059669');
+        $this->count_card($counts['pending'], 'Må kontrolleres', '#f97316', 'pending', $filter, $public, $token);
+        $this->count_card($counts['maintenance'], 'Ikke klar', '#dc2626', 'maintenance', $filter, $public, $token);
+        $this->count_card($counts['out'], 'Ute nå', '#2563eb', 'out', $filter, $public, $token);
+        $this->count_card($counts['ready'], 'Kontrollert og klar', '#059669', 'ready', $filter, $public, $token);
         echo '</div>';
+
+        if ($filter !== '') {
+            $clear_url = $public
+                ? $this->public_url($token)
+                : admin_url('admin.php?page=' . self::PAGE_SLUG);
+
+            echo '<div class="tr-filterbar">';
+            echo '<strong>Viser: ' . esc_html($this->status_label($filter)) . ' (' . esc_html(count($visible_rows)) . ')</strong>';
+            echo '<a href="' . esc_url($clear_url) . '">Vis alle</a>';
+            echo '</div>';
+        }
 
         if (empty($rows)) {
             echo '<div class="tr-empty">Ingen RnB-utstyr ble funnet.</div>';
+            return;
+        }
+
+        if (empty($visible_rows)) {
+            echo '<div class="tr-empty">Ingen utstyr har denne statusen.</div>';
             return;
         }
 
@@ -238,7 +269,7 @@ class Manager
         echo '<th>Utstyr</th><th>Status</th><th>Siste / pågående leie</th><th>Sist kontrollert</th><th>Handling</th>';
         echo '</tr></thead><tbody>';
 
-        foreach ($rows as $row) {
+        foreach ($visible_rows as $row) {
             $inventory_id = (int) $row['inventory_id'];
             $status = $row['display_status'];
             echo '<tr>';
@@ -276,9 +307,19 @@ class Manager
         echo '<p class="tr-small" style="margin:12px 2px 0">«Kontrollert og klar» må registreres etter fysisk kontroll. Etter neste WooCommerce-retur endres status automatisk til «Må kontrolleres». For Hygglo eller annen manuell utleie bruker du «Sett til kontroll» når utstyret kommer tilbake.</p>';
     }
 
-    private function count_card($number, $label, $color)
+    private function count_card($number, $label, $color, $status, $current_filter, $public, $token)
     {
-        echo '<div class="tr-count" style="border-top:4px solid ' . esc_attr($color) . '"><b>' . esc_html($number) . '</b><span>' . esc_html($label) . '</span></div>';
+        $base_url = $public
+            ? $this->public_url($token)
+            : admin_url('admin.php?page=' . self::PAGE_SLUG);
+
+        $url = add_query_arg('t_rent_status', $status, $base_url);
+        $active_class = $current_filter === $status ? ' tr-count-active' : '';
+
+        echo '<a class="tr-count-link" href="' . esc_url($url) . '" aria-label="' . esc_attr('Vis ' . $label) . '">';
+        echo '<div class="tr-count' . esc_attr($active_class) . '" style="border-top:4px solid ' . esc_attr($color) . '">';
+        echo '<b>' . esc_html($number) . '</b><span>' . esc_html($label) . '</span>';
+        echo '</div></a>';
     }
 
     private function render_action_form($inventory_id, $status, $public, $token)
