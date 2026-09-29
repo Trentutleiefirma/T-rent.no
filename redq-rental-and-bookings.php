@@ -249,8 +249,29 @@ final class RedQ_Rental_And_Bookings
         require_once trailingslashit(RNB_PATH) . 'EquipmentInspectionManager.php';
         new REDQ_RnB\EquipmentInspectionManager();
 
-        require_once trailingslashit(RNB_PATH) . 'ProductAddonManager.php';
-        new REDQ_RnB\ProductAddonManager();
+        /*
+         * T-Rent add-on products.
+         *
+         * This feature must never be allowed to take down the whole booking
+         * plugin/site. Load it defensively so a missing/broken custom add-on
+         * file disables only the add-on feature while the rest of RnB keeps
+         * running normally.
+         */
+        $product_addon_file = trailingslashit(RNB_PATH) . 'ProductAddonManager.php';
+
+        if (file_exists($product_addon_file)) {
+            try {
+                require_once $product_addon_file;
+
+                if (class_exists('REDQ_RnB\\ProductAddonManager')) {
+                    new REDQ_RnB\ProductAddonManager();
+                }
+            } catch (\Throwable $e) {
+                error_log(
+                    'T-Rent ProductAddonManager disabled: ' . $e->getMessage()
+                );
+            }
+        }
     }
 
     /**
