@@ -180,6 +180,7 @@ class Assets
             'calendar_props'     => $settings_data,
             'validate_fields' => $validate_fields,
             'block_dates'        => isset($periods['availability']) ? $periods['availability'] : [],
+            'status_dates'       => isset($periods['status_dates']) ? $periods['status_dates'] : [],
             'woocommerce_info'   => $woocommerce_info,
             'allowed_datetime'   => isset($periods['allowed_datetime']) ? $periods['allowed_datetime'] : [],
             'localize_info'      => $localize_info,
