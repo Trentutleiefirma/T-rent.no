@@ -74,6 +74,72 @@ function rnb_locate_template($template_name, $template_path = '', $default_path 
     return apply_filters('woocommerce_locate_template', $template, $template_name, $template_path);
 }
 
+/**
+ * T-Rent: WooCommerce order statuses that count as a confirmed rental booking.
+ *
+ * WC_Order::get_status() returns status slugs without the "wc-" prefix.
+ * Pending and on-hold orders are intentionally excluded.
+ *
+ * @return array
+ */
+if (!function_exists('trent_rnb_confirmed_order_statuses')) {
+    function trent_rnb_confirmed_order_statuses()
+    {
+        return apply_filters(
+            'trent_rnb_confirmed_order_statuses',
+            [
+                'processing',
+                'completed',
+                'partially-paid',
+            ]
+        );
+    }
+}
+
+/**
+ * T-Rent: Determine whether an order is confirmed and should reserve inventory.
+ *
+ * @param int $order_id
+ * @return bool
+ */
+if (!function_exists('trent_rnb_order_is_confirmed')) {
+    function trent_rnb_order_is_confirmed($order_id)
+    {
+        $order_id = absint($order_id);
+
+        if (!$order_id) {
+            return false;
+        }
+
+        if (function_exists('wc_get_order')) {
+            $order = wc_get_order($order_id);
+
+            if ($order) {
+                return in_array(
+                    $order->get_status(),
+                    trent_rnb_confirmed_order_statuses(),
+                    true
+                );
+            }
+        }
+
+        // Legacy fallback when the order is stored as a WordPress post.
+        $status = get_post_status($order_id);
+
+        if (!$status) {
+            return false;
+        }
+
+        $status = preg_replace('/^wc-/', '', $status);
+
+        return in_array(
+            $status,
+            trent_rnb_confirmed_order_statuses(),
+            true
+        );
+    }
+}
+
 function rnb_inventory_availability_check($product_id, $inventory_id, $render = 'BLOCKED_DATES_ONLY')
 {
     global $wpdb;
@@ -115,11 +181,11 @@ function rnb_inventory_availability_check($product_id, $inventory_id, $render = 
         return [];
     }
 
-    $skip_order = ['wc-checkout-draft', 'wc-failed', 'auto-draft'];
     foreach ($filtered_booking_data as $key => $data) {
 
-        $order_status = get_post_status($data['order_id']);
-        if (!$order_status || in_array($order_status, $skip_order)) {
+        // Only confirmed WooCommerce orders reserve rental inventory.
+        // Manual blocks are handled separately by Period_Trait.
+        if (!trent_rnb_order_is_confirmed($data['order_id'])) {
             continue;
         }
 
@@ -296,6 +362,15 @@ function rnb_inventory_quantity_availability_check($frontend)
     }
 
     foreach ($filtered_booking_data as $key => $data) {
+        // Active manual blocks always reserve inventory. Normal order rows only
+        // reserve inventory after the booking is confirmed.
+        if (
+            $data['block_by'] !== 'CUSTOM' &&
+            !trent_rnb_order_is_confirmed($data['order_id'])
+        ) {
+            continue;
+        }
+
         $single_slotted_data = [];
         $begin = new DateTime($data['pickup_datetime']);
         $end = new DateTime($data['return_datetime']);
