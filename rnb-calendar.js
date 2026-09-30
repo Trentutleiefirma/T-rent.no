@@ -30,6 +30,102 @@ jQuery(document).ready(function ($) {
     return dates;
   };
 
+  addTRentCalendarStatusStyles = () => {
+    if (document.getElementById('trent-rental-calendar-status-styles')) {
+      return;
+    }
+
+    const style = document.createElement('style');
+    style.id = 'trent-rental-calendar-status-styles';
+    style.textContent = `
+      .xdsoft_datetimepicker .xdsoft_calendar td.trent-calendar-available:not(.xdsoft_disabled):not(.xdsoft_current) {
+        background: #d9f2df !important;
+        color: #176b2c !important;
+      }
+
+      .xdsoft_datetimepicker .xdsoft_calendar td.trent-calendar-available:not(.xdsoft_disabled):hover {
+        background: #c5e9ce !important;
+        color: #124f22 !important;
+      }
+
+      .xdsoft_datetimepicker .xdsoft_calendar td.trent-calendar-available.xdsoft_current:not(.xdsoft_disabled) {
+        background: #2e7d32 !important;
+        color: #ffffff !important;
+      }
+
+      .xdsoft_datetimepicker .xdsoft_calendar td.trent-calendar-booked,
+      .xdsoft_datetimepicker .xdsoft_calendar td.trent-calendar-booked.xdsoft_disabled {
+        background: #f6c8cc !important;
+        color: #8a1c25 !important;
+        opacity: 1 !important;
+        cursor: not-allowed !important;
+      }
+
+      .xdsoft_datetimepicker .xdsoft_calendar td.trent-calendar-booked > div,
+      .xdsoft_datetimepicker .xdsoft_calendar td.trent-calendar-available > div {
+        background: transparent !important;
+        color: inherit !important;
+      }
+    `;
+
+    document.head.appendChild(style);
+  };
+
+  formatTRentCalendarDate = (date, format) => {
+    const values = {
+      d: String(date.getDate()).padStart(2, '0'),
+      j: String(date.getDate()),
+      m: String(date.getMonth() + 1).padStart(2, '0'),
+      n: String(date.getMonth() + 1),
+      Y: String(date.getFullYear()),
+      y: String(date.getFullYear()).slice(-2),
+    };
+
+    return String(format || 'm/d/Y').replace(/[djmnYy]/g, function (token) {
+      return values[token] !== undefined ? values[token] : token;
+    });
+  };
+
+  markTRentCalendarDays = (picker, bookedDates, dateFormat) => {
+    if (!picker || !picker.find) {
+      return;
+    }
+
+    const bookedLookup = {};
+    (Array.isArray(bookedDates) ? bookedDates : []).forEach(function (date) {
+      bookedLookup[String(date)] = true;
+    });
+
+    picker.find('.xdsoft_calendar td.xdsoft_date').each(function () {
+      const cell = jQuery(this);
+      cell.removeClass('trent-calendar-booked trent-calendar-available');
+
+      const year = parseInt(cell.attr('data-year'), 10);
+      const month = parseInt(cell.attr('data-month'), 10);
+      const day = parseInt(cell.attr('data-date'), 10);
+
+      if (
+        Number.isNaN(year) ||
+        Number.isNaN(month) ||
+        Number.isNaN(day)
+      ) {
+        return;
+      }
+
+      const cellDate = new Date(year, month, day);
+      const dateKey = formatTRentCalendarDate(cellDate, dateFormat);
+
+      if (bookedLookup[dateKey]) {
+        cell.addClass('trent-calendar-booked');
+        return;
+      }
+
+      if (!cell.hasClass('xdsoft_disabled')) {
+        cell.addClass('trent-calendar-available');
+      }
+    });
+  };
+
   rnb_handle_time_restriction = (
     conditional_data,
     validation_data,
@@ -111,6 +207,8 @@ jQuery(document).ready(function ($) {
     const conditional_data = CALENDAR_DATA.calendar_props.settings.conditions;
     const general_data = CALENDAR_DATA.calendar_props.settings.general;
     const validation_data = CALENDAR_DATA.calendar_props.settings.validations;
+
+    addTRentCalendarStatusStyles();
 
     let opening_closing = validation_data.openning_closing;
     const opening_closing_copy = clone(opening_closing);
@@ -412,6 +510,13 @@ jQuery(document).ready(function ($) {
       formatDate: conditional_data.date_format,
       disabledWeekDays: offDays,
       scrollInput: false,
+      onGenerate: function () {
+        markTRentCalendarDays(
+          this,
+          CALENDAR_DATA.block_dates,
+          conditional_data.date_format
+        );
+      },
     };
 
     if (RNB_URL_DATA?.block_future_date) {
