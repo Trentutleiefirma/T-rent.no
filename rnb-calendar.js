@@ -20,14 +20,57 @@ jQuery(document).ready(function ($) {
   };
 
   getBlockDates = (CALENDAR_DATA) => {
-    let dates = [];
-    if (CALENDAR_DATA.buffer_days) {
-      const allDates = CALENDAR_DATA.block_dates.concat(
-        CALENDAR_DATA.buffer_days
-      );
-      dates = allDates.filter((v, i, a) => a.indexOf(v) === i);
+    const blockDates = Array.isArray(CALENDAR_DATA.block_dates)
+      ? CALENDAR_DATA.block_dates
+      : [];
+    const bufferDays = Array.isArray(CALENDAR_DATA.buffer_days)
+      ? CALENDAR_DATA.buffer_days
+      : [];
+
+    return blockDates
+      .concat(bufferDays)
+      .filter((v, i, a) => a.indexOf(v) === i);
+  };
+
+  addTRentCalendarStatusStyles = () => {
+    if (document.getElementById('trent-rental-calendar-status-styles')) {
+      return;
     }
-    return dates;
+
+    const style = document.createElement('style');
+    style.id = 'trent-rental-calendar-status-styles';
+    style.textContent = `
+      .xdsoft_datetimepicker .xdsoft_calendar td.trent-calendar-available:not(.xdsoft_disabled):not(.xdsoft_current) {
+        background: #d9f2df !important;
+        color: #176b2c !important;
+      }
+
+      .xdsoft_datetimepicker .xdsoft_calendar td.trent-calendar-available:not(.xdsoft_disabled):hover {
+        background: #c5e9ce !important;
+        color: #124f22 !important;
+      }
+
+      .xdsoft_datetimepicker .xdsoft_calendar td.trent-calendar-available.xdsoft_current:not(.xdsoft_disabled) {
+        background: #2e7d32 !important;
+        color: #ffffff !important;
+      }
+
+      .xdsoft_datetimepicker .xdsoft_calendar td.trent-calendar-booked,
+      .xdsoft_datetimepicker .xdsoft_calendar td.trent-calendar-booked.xdsoft_disabled {
+        background: #f6c8cc !important;
+        color: #8a1c25 !important;
+        opacity: 1 !important;
+        cursor: not-allowed !important;
+      }
+
+      .xdsoft_datetimepicker .xdsoft_calendar td.trent-calendar-booked > div,
+      .xdsoft_datetimepicker .xdsoft_calendar td.trent-calendar-available > div {
+        background: transparent !important;
+        color: inherit !important;
+      }
+    `;
+
+    document.head.appendChild(style);
   };
 
   rnb_handle_time_restriction = (
@@ -111,6 +154,16 @@ jQuery(document).ready(function ($) {
     const conditional_data = CALENDAR_DATA.calendar_props.settings.conditions;
     const general_data = CALENDAR_DATA.calendar_props.settings.general;
     const validation_data = CALENDAR_DATA.calendar_props.settings.validations;
+
+    addTRentCalendarStatusStyles();
+
+    const bookedDates = Array.isArray(CALENDAR_DATA.block_dates)
+      ? CALENDAR_DATA.block_dates
+      : [];
+    const bookedDateLookup = bookedDates.reduce(function (lookup, date) {
+      lookup[date] = true;
+      return lookup;
+    }, {});
 
     let opening_closing = validation_data.openning_closing;
     const opening_closing_copy = clone(opening_closing);
@@ -399,6 +452,10 @@ jQuery(document).ready(function ($) {
     });
 
     const final = getBlockDates(CALENDAR_DATA);
+    const unavailableDateLookup = final.reduce(function (lookup, date) {
+      lookup[date] = true;
+      return lookup;
+    }, {});
 
     const calendarOptions = {
       timepicker: false,
@@ -412,6 +469,19 @@ jQuery(document).ready(function ($) {
       formatDate: conditional_data.date_format,
       disabledWeekDays: offDays,
       scrollInput: false,
+      beforeShowDay: function (date) {
+        const dateKey = date.dateFormat(conditional_data.date_format);
+
+        if (bookedDateLookup[dateKey]) {
+          return [true, 'trent-calendar-booked'];
+        }
+
+        if (!unavailableDateLookup[dateKey]) {
+          return [true, 'trent-calendar-available'];
+        }
+
+        return [true, 'trent-calendar-unavailable'];
+      },
     };
 
     if (RNB_URL_DATA?.block_future_date) {
