@@ -2,7 +2,7 @@
 /**
  * Plugin Name: T-Rent Admin App
  * Description: Mobilvennlig front-end app for sikker administrasjon av T-Rent WooCommerce uten wp-admin.
- * Version: 0.1.0
+ * Version: 0.2.0
  * Author: T-Rent
  * Requires Plugins: woocommerce
  * Requires PHP: 7.4
@@ -12,12 +12,14 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class TRent_Admin_App {
-    const VERSION = '0.1.0';
+final class TRent_Admin_App
+{
+    const VERSION = '0.2.0';
     const QUERY_VAR = 'trent_app';
     const REST_NAMESPACE = 't-rent-app/v1';
 
-    public static function init() {
+    public static function init()
+    {
         add_action('init', [__CLASS__, 'register_route']);
         add_filter('query_vars', [__CLASS__, 'register_query_var']);
         add_action('template_redirect', [__CLASS__, 'render_app']);
@@ -25,36 +27,48 @@ final class TRent_Admin_App {
         add_filter('show_admin_bar', [__CLASS__, 'hide_admin_bar']);
     }
 
-    public static function activate() {
+    public static function activate()
+    {
         self::register_route();
         flush_rewrite_rules();
     }
 
-    public static function deactivate() {
+    public static function deactivate()
+    {
         flush_rewrite_rules();
     }
 
-    public static function register_route() {
+    public static function register_route()
+    {
         add_rewrite_rule('^t-rent-app/?$', 'index.php?' . self::QUERY_VAR . '=1', 'top');
     }
 
-    public static function register_query_var($vars) {
+    public static function register_query_var($vars)
+    {
         $vars[] = self::QUERY_VAR;
         return $vars;
     }
 
-    public static function hide_admin_bar($show) {
+    public static function hide_admin_bar($show)
+    {
         return ((int) get_query_var(self::QUERY_VAR) === 1) ? false : $show;
     }
 
-    private static function can_manage() {
+    private static function can_manage()
+    {
         return is_user_logged_in() && (
             current_user_can('manage_woocommerce') ||
             current_user_can('edit_products')
         );
     }
 
-    public static function render_app() {
+    public static function rest_permission()
+    {
+        return self::can_manage();
+    }
+
+    public static function render_app()
+    {
         if ((int) get_query_var(self::QUERY_VAR) !== 1) {
             return;
         }
@@ -74,10 +88,12 @@ final class TRent_Admin_App {
         header('Content-Type: text/html; charset=' . get_bloginfo('charset'));
 
         $config = [
-            'restBase'  => esc_url_raw(rest_url(self::REST_NAMESPACE)),
-            'nonce'     => wp_create_nonce('wp_rest'),
+            'restBase' => esc_url_raw(rest_url(self::REST_NAMESPACE)),
+            'nonce' => wp_create_nonce('wp_rest'),
             'logoutUrl' => esc_url_raw(wp_logout_url(home_url('/t-rent-app/'))),
+            'today' => wp_date('Y-m-d'),
         ];
+
         $user = wp_get_current_user();
         $base = plugin_dir_url(__FILE__);
         ?>
@@ -95,7 +111,7 @@ final class TRent_Admin_App {
     <header class="topbar">
         <div>
             <div class="brand">T-RENT APP</div>
-            <div class="sub">WooCommerce uten wp-admin</div>
+            <div class="sub">Booking, utstyr og WooCommerce</div>
         </div>
         <div class="top-actions">
             <span class="sub"><?php echo esc_html($user->display_name); ?></span>
@@ -103,23 +119,92 @@ final class TRent_Admin_App {
         </div>
     </header>
 
+    <nav class="app-nav" aria-label="T-Rent App">
+        <button class="nav-btn active" data-view="bookings" type="button">Bookinger</button>
+        <button class="nav-btn" data-view="blocks" type="button">Blokker dato</button>
+        <button class="nav-btn" data-view="equipment" type="button">Utstyr</button>
+        <button class="nav-btn" data-view="products" type="button">Produkter</button>
+    </nav>
+
     <div id="notice" class="notice"></div>
 
-    <div class="card toolbar">
-        <input id="search" class="search" type="search" placeholder="Søk etter produkt ..." autocomplete="off">
-        <button id="refresh" class="btn secondary" type="button">Oppdater</button>
-    </div>
+    <section id="view-bookings" class="view active">
+        <div class="card section-toolbar">
+            <div>
+                <div class="section-title compact">Bookinger</div>
+                <div class="hint">Leiedato, dato bookingen ble lagt inn og kundens kontaktinformasjon.</div>
+            </div>
+            <div class="toolbar-actions">
+                <select id="bookingFilter" class="small-select">
+                    <option value="open">Aktive + kommende</option>
+                    <option value="all">Alle</option>
+                    <option value="active">Ute nå</option>
+                    <option value="upcoming">Kommende</option>
+                    <option value="completed">Avsluttet</option>
+                </select>
+                <button id="bookingRefresh" class="btn secondary" type="button">Oppdater</button>
+            </div>
+        </div>
+        <div id="bookingList"><div class="card empty">Laster bookinger ...</div></div>
+    </section>
 
-    <div class="grid">
-        <section class="card list">
-            <div class="list-head">Produkter</div>
-            <div id="productList"><div class="empty">Laster produkter ...</div></div>
-        </section>
+    <section id="view-blocks" class="view">
+        <div class="card block-form-card">
+            <div class="section-title">Blokker dato</div>
+            <div class="hint">Samme funksjon som i «Utleie system». Blokkeringen lagres i RnB og gjør datoen utilgjengelig.</div>
+            <form id="blockForm" class="block-form">
+                <div class="field">
+                    <label for="blockProduct">Produkt</label>
+                    <select id="blockProduct" required>
+                        <option value="">Laster produkter ...</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="blockFrom">Fra og med</label>
+                    <input id="blockFrom" type="date" required>
+                </div>
+                <div class="field">
+                    <label for="blockTo">Til og med</label>
+                    <input id="blockTo" type="date" required>
+                </div>
+                <div class="field button-field">
+                    <label>&nbsp;</label>
+                    <button class="btn" type="submit">Blokker dato</button>
+                </div>
+            </form>
+        </div>
 
-        <section class="card editor" id="editor">
-            <div class="empty">Velg et produkt for å redigere.</div>
-        </section>
-    </div>
+        <div class="card">
+            <div class="list-head row-head">
+                <span>Aktive manuelle blokkeringer</span>
+                <button id="blockRefresh" class="btn secondary small-btn" type="button">Oppdater</button>
+            </div>
+            <div id="blockList"><div class="empty">Laster blokkeringer ...</div></div>
+        </div>
+    </section>
+
+    <section id="view-equipment" class="view">
+        <div id="equipmentCounts" class="status-grid"></div>
+        <div id="equipmentList"><div class="card empty">Laster utstyr ...</div></div>
+    </section>
+
+    <section id="view-products" class="view">
+        <div class="card toolbar">
+            <input id="search" class="search" type="search" placeholder="Søk etter produkt ..." autocomplete="off">
+            <button id="refresh" class="btn secondary" type="button">Oppdater</button>
+        </div>
+
+        <div class="grid">
+            <section class="card list">
+                <div class="list-head">Produkter</div>
+                <div id="productList"><div class="empty">Laster produkter ...</div></div>
+            </section>
+
+            <section class="card editor" id="editor">
+                <div class="empty">Velg et produkt for å redigere.</div>
+            </section>
+        </div>
+    </section>
 </div>
 
 <script>window.TRentApp = <?php echo wp_json_encode($config); ?>;</script>
@@ -130,7 +215,8 @@ final class TRent_Admin_App {
         exit;
     }
 
-    public static function register_rest_routes() {
+    public static function register_rest_routes()
+    {
         register_rest_route(self::REST_NAMESPACE, '/products', [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [__CLASS__, 'rest_products'],
@@ -158,11 +244,8 @@ final class TRent_Admin_App {
         ]);
     }
 
-    public static function rest_permission() {
-        return self::can_manage();
-    }
-
-    public static function rest_products(WP_REST_Request $request) {
+    public static function rest_products(WP_REST_Request $request)
+    {
         if (!function_exists('wc_get_product')) {
             return new WP_Error('trent_wc_missing', 'WooCommerce er ikke tilgjengelig.', ['status' => 500]);
         }
@@ -189,21 +272,25 @@ final class TRent_Admin_App {
         return rest_ensure_response(['products' => $products]);
     }
 
-    public static function rest_product(WP_REST_Request $request) {
+    public static function rest_product(WP_REST_Request $request)
+    {
         $product = wc_get_product((int) $request['id']);
         if (!$product) {
             return new WP_Error('trent_product_missing', 'Produktet finnes ikke.', ['status' => 404]);
         }
+
         return rest_ensure_response(self::format_product($product));
     }
 
-    public static function rest_update_product(WP_REST_Request $request) {
+    public static function rest_update_product(WP_REST_Request $request)
+    {
         $product_id = (int) $request['id'];
         $product = wc_get_product($product_id);
 
         if (!$product) {
             return new WP_Error('trent_product_missing', 'Produktet finnes ikke.', ['status' => 404]);
         }
+
         if (!current_user_can('edit_post', $product_id)) {
             return new WP_Error('trent_product_forbidden', 'Du kan ikke redigere dette produktet.', ['status' => 403]);
         }
@@ -283,9 +370,11 @@ final class TRent_Admin_App {
                 rest_sanitize_boolean($data['deposit_enabled']) ? 'yes' : 'no'
             );
         }
+
         if ($deposit_type !== null) {
             update_post_meta($product_id, '_awcdp_deposit_type', $deposit_type);
         }
+
         if ($deposit_amount !== null) {
             update_post_meta($product_id, '_awcdp_deposits_deposit_amount', $deposit_amount);
         }
@@ -299,7 +388,8 @@ final class TRent_Admin_App {
         return rest_ensure_response(self::format_product($fresh ?: $product));
     }
 
-    private static function format_product($product) {
+    private static function format_product($product)
+    {
         $id = $product->get_id();
         $type = $product->get_type();
         $image = wp_get_attachment_image_url($product->get_image_id(), 'thumbnail');
@@ -311,6 +401,7 @@ final class TRent_Admin_App {
             'grouped' => 'Gruppert produkt',
             'external' => 'Eksternt produkt',
         ];
+
         $status_labels = [
             'publish' => 'Publisert',
             'draft' => 'Kladd',
@@ -339,6 +430,12 @@ final class TRent_Admin_App {
     }
 }
 
+require_once __DIR__ . '/includes/class-trent-app-rental.php';
+require_once __DIR__ . '/includes/class-trent-app-bookings.php';
+require_once __DIR__ . '/includes/class-trent-app-date-blocks.php';
+require_once __DIR__ . '/includes/class-trent-app-equipment.php';
+
 TRent_Admin_App::init();
+
 register_activation_hook(__FILE__, ['TRent_Admin_App', 'activate']);
 register_deactivation_hook(__FILE__, ['TRent_Admin_App', 'deactivate']);
