@@ -64,3 +64,8 @@ button,input,select{font:inherit}
 .next-booking{margin-top:7px}.equipment-actions{display:grid;grid-template-columns:2fr repeat(4,auto);gap:7px;margin-top:12px}
 @media(max-width:860px){.booking-grid,.equipment-info{grid-template-columns:1fr 1fr}.block-form{grid-template-columns:1fr 1fr}.button-field{grid-column:1/-1}.button-field .btn{width:100%}.status-grid{grid-template-columns:repeat(2,1fr)}.equipment-actions{grid-template-columns:1fr 1fr}.equipment-note{grid-column:1/-1}}
 @media(max-width:760px){.grid{grid-template-columns:1fr}.editor{position:static}.topbar{align-items:flex-start}.top-actions .sub{display:none}.row{grid-template-columns:1fr}.product{padding:11px}.shell{padding:12px 10px 28px}.brand{font-size:22px}.app-nav{grid-template-columns:1fr 1fr}.section-toolbar{align-items:flex-start;flex-direction:column}.toolbar-actions{width:100%}.small-select{flex:1}.booking-grid,.equipment-info{grid-template-columns:1fr}.block-form{grid-template-columns:1fr}.button-field{grid-column:auto}.equipment-actions{grid-template-columns:1fr 1fr}}
+
+.global-search{padding:12px;margin-bottom:14px;display:flex;gap:8px;align-items:center}
+.global-search .search{min-width:0;flex:1}
+.product-toolbar{justify-content:space-between}
+@media(max-width:520px){.global-search{align-items:stretch}.global-search .btn{flex:0 0 auto}}
