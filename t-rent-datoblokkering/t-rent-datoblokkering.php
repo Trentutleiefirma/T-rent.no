@@ -236,6 +236,8 @@ final class TRent_Date_Blocker
         global $wpdb;
 
         $created = 0;
+        $created_ids = [];
+        $failed = false;
         $now = current_time('mysql');
 
         foreach ($inventory_ids as $inventory_id) {
@@ -283,8 +285,8 @@ final class TRent_Date_Blocker
                     '%s',
                     '%d',
                     '%d',
-                    null,
-                    null,
+                    '%d',
+                    '%d',
                     '%s',
                     '%s',
                     '%s',
@@ -293,9 +295,33 @@ final class TRent_Date_Blocker
                 ]
             );
 
-            if ($inserted !== false) {
-                $created++;
+            if ($inserted === false) {
+                $failed = true;
+                break;
             }
+
+            $created++;
+            $created_ids[] = absint($wpdb->insert_id);
+        }
+
+        if ($failed) {
+            foreach ($created_ids as $created_id) {
+                if ($created_id) {
+                    $wpdb->delete(
+                        $table,
+                        [
+                            'id'       => $created_id,
+                            'block_by' => 'CUSTOM',
+                        ],
+                        [
+                            '%d',
+                            '%s',
+                        ]
+                    );
+                }
+            }
+
+            self::redirect_with_status('database_error');
         }
 
         if ($created === 0) {
@@ -447,6 +473,7 @@ final class TRent_Date_Blocker
             'no_inventory'   => ['error', 'Produktet har ingen tilkoblet RnB-inventory og kan derfor ikke blokkeres.'],
             'rnb_missing'    => ['error', 'RnB-tabellen ble ikke funnet. Kontroller at WooCommerce Booking & Rental System er aktivert.'],
             'invalid_block'  => ['error', 'Blokkeringen kunne ikke fjernes.'],
+            'database_error' => ['error', 'Blokkeringen kunne ikke lagres. Ingen delvis blokkering ble beholdt.'],
         ];
 
         if (!isset($messages[$status])) {
