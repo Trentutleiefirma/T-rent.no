@@ -187,6 +187,21 @@ final class TRent_Date_Blocker
         );
     }
 
+    private static function purge_product_cache($product_id)
+    {
+        $product_id = absint($product_id);
+
+        if (!$product_id) {
+            return;
+        }
+
+        clean_post_cache($product_id);
+        wc_delete_product_transients($product_id);
+
+        // LiteSpeed Cache listens to this action when the plugin is active.
+        do_action('litespeed_purge_post', $product_id);
+    }
+
     public static function handle_add_block()
     {
         if (!current_user_can('manage_woocommerce')) {
@@ -328,6 +343,8 @@ final class TRent_Date_Blocker
             self::redirect_with_status('already_exists');
         }
 
+        self::purge_product_cache($product_id);
+
         self::redirect_with_status('added', $created);
     }
 
@@ -362,6 +379,26 @@ final class TRent_Date_Blocker
 
         global $wpdb;
 
+        $product_ids = [];
+        foreach ($ids as $id) {
+            $row_product_id = $wpdb->get_var(
+                $wpdb->prepare(
+                    "SELECT product_id
+                     FROM {$table}
+                     WHERE id = %d
+                       AND block_by = 'CUSTOM'
+                     LIMIT 1",
+                    $id
+                )
+            );
+
+            if ($row_product_id) {
+                $product_ids[] = absint($row_product_id);
+            }
+        }
+
+        $product_ids = array_values(array_unique(array_filter($product_ids)));
+
         $removed = 0;
         $now = current_time('mysql');
 
@@ -388,6 +425,12 @@ final class TRent_Date_Blocker
 
             if ($updated) {
                 $removed++;
+            }
+        }
+
+        if ($removed > 0) {
+            foreach ($product_ids as $product_id) {
+                self::purge_product_cache($product_id);
             }
         }
 
