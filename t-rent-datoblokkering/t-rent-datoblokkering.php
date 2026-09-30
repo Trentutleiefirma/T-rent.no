@@ -196,7 +196,10 @@ final class TRent_Date_Blocker
         }
 
         clean_post_cache($product_id);
-        wc_delete_product_transients($product_id);
+
+        if (function_exists('wc_delete_product_transients')) {
+            wc_delete_product_transients($product_id);
+        }
 
         // LiteSpeed Cache listens to this action when the plugin is active.
         do_action('litespeed_purge_post', $product_id);
