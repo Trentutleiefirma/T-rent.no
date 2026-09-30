@@ -67,3 +67,13 @@ Ett søkefelt øverst følger aktiv fane:
 - Produkter: produktnavn via WooCommerce-søket
 
 Søket filtrerer bare visningen og endrer ingen data.
+
+
+## Bookingstatus
+T-Rent App har en egen driftsstatus som ikke endrer WooCommerce betalings-/ordrestatus:
+- Pågående: aktiv leie
+- På pause: kan settes manuelt når en booking må stoppes/endres
+- Fullført: vises automatisk etter endt leie eller kan settes manuelt
+- Kommende: booking som ikke har startet ennå
+
+Status kan endres fra bookingkortet i appen og lagres på WooCommerce-ordren via WooCommerce CRUD.
