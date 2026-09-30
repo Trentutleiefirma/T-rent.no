@@ -2,7 +2,7 @@
 /**
  * Plugin Name: T-Rent Admin App
  * Description: Mobilvennlig front-end app for sikker administrasjon av T-Rent WooCommerce uten wp-admin.
- * Version: 0.2.0
+ * Version: 0.2.1
  * Author: T-Rent
  * Requires Plugins: woocommerce
  * Requires PHP: 7.4
@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
 
 final class TRent_Admin_App
 {
-    const VERSION = '0.2.0';
+    const VERSION = '0.2.1';
     const QUERY_VAR = 'trent_app';
     const REST_NAMESPACE = 't-rent-app/v1';
 
@@ -126,6 +126,11 @@ final class TRent_Admin_App
         <button class="nav-btn" data-view="products" type="button">Produkter</button>
     </nav>
 
+    <div class="card global-search">
+        <input id="globalSearch" class="search" type="search" placeholder="Søk i bookinger ..." autocomplete="off">
+        <button id="globalSearchClear" class="btn secondary" type="button">Tøm</button>
+    </div>
+
     <div id="notice" class="notice"></div>
 
     <section id="view-bookings" class="view active">
@@ -189,8 +194,8 @@ final class TRent_Admin_App
     </section>
 
     <section id="view-products" class="view">
-        <div class="card toolbar">
-            <input id="search" class="search" type="search" placeholder="Søk etter produkt ..." autocomplete="off">
+        <div class="card toolbar product-toolbar">
+            <div class="hint">Bruk søkefeltet øverst for å søke i produkter.</div>
             <button id="refresh" class="btn secondary" type="button">Oppdater</button>
         </div>
 
