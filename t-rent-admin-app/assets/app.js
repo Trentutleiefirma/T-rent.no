@@ -2,14 +2,18 @@
     'use strict';
 
     var cfg = window.TRentApp || {};
-    var listEl = document.getElementById('productList');
-    var editorEl = document.getElementById('editor');
-    var searchEl = document.getElementById('search');
-    var refreshEl = document.getElementById('refresh');
     var noticeEl = document.getElementById('notice');
+
     var products = [];
     var selectedId = null;
-    var timer = null;
+    var productTimer = null;
+
+    var bookings = [];
+    var bookingsLoaded = false;
+    var blocksLoaded = false;
+    var equipmentLoaded = false;
+    var productsLoaded = false;
+    var equipmentFilter = '';
 
     function esc(value) {
         return String(value == null ? '' : value).replace(/[&<>'"]/g, function (ch) {
@@ -46,13 +50,339 @@
         });
     }
 
-    function loadProducts() {
-        listEl.innerHTML = '<div class="empty">Laster produkter ...</div>';
-        var query = searchEl.value.trim();
+    function activateView(name) {
+        Array.prototype.forEach.call(document.querySelectorAll('.view'), function (view) {
+            view.classList.toggle('active', view.id === 'view-' + name);
+        });
 
-        api('/products?search=' + encodeURIComponent(query)).then(function (data) {
+        Array.prototype.forEach.call(document.querySelectorAll('.nav-btn'), function (btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-view') === name);
+        });
+
+        if (name === 'bookings' && !bookingsLoaded) {
+            loadBookings();
+        } else if (name === 'blocks' && !blocksLoaded) {
+            loadBlocks();
+        } else if (name === 'equipment' && !equipmentLoaded) {
+            loadEquipment();
+        } else if (name === 'products' && !productsLoaded) {
+            loadProducts();
+        }
+    }
+
+    Array.prototype.forEach.call(document.querySelectorAll('.nav-btn'), function (btn) {
+        btn.addEventListener('click', function () {
+            activateView(btn.getAttribute('data-view'));
+        });
+    });
+
+    function loadBookings() {
+        var list = document.getElementById('bookingList');
+        list.innerHTML = '<div class="card empty">Laster bookinger ...</div>';
+
+        api('/bookings').then(function (data) {
+            bookings = data.bookings || [];
+            bookingsLoaded = true;
+            renderBookings();
+        }).catch(function (err) {
+            list.innerHTML = '<div class="card empty">Kunne ikke laste bookinger.</div>';
+            showNotice(err.message, false);
+        });
+    }
+
+    function renderBookings() {
+        var list = document.getElementById('bookingList');
+        var filter = document.getElementById('bookingFilter').value;
+        var visible = bookings.filter(function (b) {
+            if (filter === 'all') {
+                return true;
+            }
+            if (filter === 'open') {
+                return b.phase === 'active' || b.phase === 'upcoming';
+            }
+            return b.phase === filter;
+        });
+
+        if (!visible.length) {
+            list.innerHTML = '<div class="card empty">Ingen bookinger i dette utvalget.</div>';
+            return;
+        }
+
+        list.innerHTML = visible.map(function (b) {
+            var phone = b.phone
+                ? '<a class="contact-link" href="tel:' + esc(b.phone) + '">' + esc(b.phone) + '</a>'
+                : '<span class="muted">Ingen telefon</span>';
+            var email = b.email
+                ? '<a class="contact-link" href="mailto:' + esc(b.email) + '">' + esc(b.email) + '</a>'
+                : '<span class="muted">Ingen e-post</span>';
+
+            return '<article class="card booking-card">' +
+                '<div class="booking-top">' +
+                    '<div>' +
+                        '<div class="booking-product">' + esc(b.product_name) + '</div>' +
+                        '<div class="meta">Ordre #' + esc(b.order_number) + ' · ' + esc(b.status_label) + '</div>' +
+                    '</div>' +
+                    '<span class="status-badge status-' + esc(b.phase) + '">' + esc(b.phase_label) + '</span>' +
+                '</div>' +
+                '<div class="booking-grid">' +
+                    '<div class="info-box important">' +
+                        '<span>Leieperiode</span>' +
+                        '<strong>' + esc(b.pickup) + '</strong>' +
+                        '<strong>→ ' + esc(b.return) + '</strong>' +
+                    '</div>' +
+                    '<div class="info-box">' +
+                        '<span>Booket</span>' +
+                        '<strong>' + esc(b.booking_created || 'Ukjent') + '</strong>' +
+                    '</div>' +
+                    '<div class="info-box">' +
+                        '<span>Kunde</span>' +
+                        '<strong>' + esc(b.customer_name) + '</strong>' +
+                        '<div>' + phone + '</div>' +
+                        '<div>' + email + '</div>' +
+                    '</div>' +
+                    '<div class="info-box">' +
+                        '<span>Betaling</span>' +
+                        '<strong>' + esc(b.total) + ' ' + esc(b.currency) + '</strong>' +
+                        '<div class="muted">' + esc(b.payment_method || '') + '</div>' +
+                    '</div>' +
+                '</div>' +
+            '</article>';
+        }).join('');
+    }
+
+    document.getElementById('bookingFilter').addEventListener('change', renderBookings);
+    document.getElementById('bookingRefresh').addEventListener('click', loadBookings);
+
+    function loadBlocks() {
+        var list = document.getElementById('blockList');
+        list.innerHTML = '<div class="empty">Laster blokkeringer ...</div>';
+
+        api('/blocks').then(function (data) {
+            blocksLoaded = true;
+            renderBlockProducts(data.products || []);
+            renderBlocks(data.blocks || []);
+        }).catch(function (err) {
+            list.innerHTML = '<div class="empty">Kunne ikke laste blokkeringer.</div>';
+            showNotice(err.message, false);
+        });
+    }
+
+    function renderBlockProducts(items) {
+        var select = document.getElementById('blockProduct');
+        var current = select.value;
+        select.innerHTML = '<option value="">Velg produkt</option>' + items.map(function (p) {
+            return '<option value="' + p.id + '">' + esc(p.name) + '</option>';
+        }).join('');
+
+        if (current && items.some(function (p) { return String(p.id) === String(current); })) {
+            select.value = current;
+        }
+    }
+
+    function renderBlocks(items) {
+        var list = document.getElementById('blockList');
+
+        if (!items.length) {
+            list.innerHTML = '<div class="empty">Ingen aktive manuelle blokkeringer.</div>';
+            return;
+        }
+
+        list.innerHTML = items.map(function (b) {
+            var range = b.from === b.to ? b.from : b.from + ' – ' + b.to;
+            return '<div class="block-row">' +
+                '<div>' +
+                    '<strong>' + esc(b.product_name) + '</strong>' +
+                    '<div class="meta">' + esc(range) + ' · ' + b.inventory_count + ' inventory</div>' +
+                '</div>' +
+                '<button class="btn danger small-btn remove-block" type="button" data-ids="' + esc(b.ids.join(',')) + '">Fjern</button>' +
+            '</div>';
+        }).join('');
+
+        Array.prototype.forEach.call(list.querySelectorAll('.remove-block'), function (btn) {
+            btn.addEventListener('click', function () {
+                var ids = btn.getAttribute('data-ids').split(',').map(function (v) { return Number(v); }).filter(Boolean);
+                btn.disabled = true;
+
+                api('/blocks/remove', {
+                    method: 'POST',
+                    body: JSON.stringify({ids: ids})
+                }).then(function (data) {
+                    renderBlocks(data.blocks || []);
+                    showNotice(data.message || 'Blokkeringen er fjernet.', true);
+                }).catch(function (err) {
+                    btn.disabled = false;
+                    showNotice(err.message, false);
+                });
+            });
+        });
+    }
+
+    document.getElementById('blockForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        var form = event.currentTarget;
+        var button = form.querySelector('button[type="submit"]');
+        button.disabled = true;
+        button.textContent = 'Blokkerer ...';
+
+        api('/blocks', {
+            method: 'POST',
+            body: JSON.stringify({
+                product_id: Number(document.getElementById('blockProduct').value),
+                from_date: document.getElementById('blockFrom').value,
+                to_date: document.getElementById('blockTo').value
+            })
+        }).then(function (data) {
+            renderBlocks(data.blocks || []);
+            showNotice(data.message || 'Datoen er blokkert.', true);
+            button.disabled = false;
+            button.textContent = 'Blokker dato';
+        }).catch(function (err) {
+            button.disabled = false;
+            button.textContent = 'Blokker dato';
+            showNotice(err.message, false);
+        });
+    });
+
+    document.getElementById('blockRefresh').addEventListener('click', loadBlocks);
+    document.getElementById('blockFrom').value = cfg.today || '';
+    document.getElementById('blockTo').value = cfg.today || '';
+
+    function loadEquipment() {
+        var list = document.getElementById('equipmentList');
+        list.innerHTML = '<div class="card empty">Laster utstyr ...</div>';
+
+        api('/equipment').then(function (data) {
+            equipmentLoaded = true;
+            renderEquipment(data);
+        }).catch(function (err) {
+            list.innerHTML = '<div class="card empty">Kunne ikke laste utstyr.</div>';
+            showNotice(err.message, false);
+        });
+    }
+
+    function renderEquipment(data) {
+        renderEquipmentCounts(data.counts || {});
+        var rows = data.rows || [];
+        var list = document.getElementById('equipmentList');
+        var visible = equipmentFilter
+            ? rows.filter(function (row) { return row.display_status === equipmentFilter; })
+            : rows;
+
+        if (!visible.length) {
+            list.innerHTML = '<div class="card empty">Ingen utstyr i dette utvalget.</div>';
+            return;
+        }
+
+        list.innerHTML = visible.map(function (row) {
+            var booking = '';
+            if (row.active_booking) {
+                booking = '<strong>Ute nå</strong><div class="meta">Ordre #' + esc(row.active_booking.order_id) + '<br>Retur ' + esc(row.active_booking.return) + '</div>';
+            } else if (row.last_returned) {
+                booking = '<strong>Sist returnert</strong><div class="meta">Ordre #' + esc(row.last_returned.order_id) + '<br>' + esc(row.last_returned.return) + '</div>';
+            } else {
+                booking = '<span class="muted">Ingen tidligere WooCommerce-retur</span>';
+            }
+
+            if (row.next_booking) {
+                booking += '<div class="meta next-booking"><strong>Neste:</strong> ordre #' + esc(row.next_booking.order_id) + ', ' + esc(row.next_booking.start) + '</div>';
+            }
+
+            var checked = row.checked_at
+                ? '<strong>' + esc(row.checked_at) + '</strong>' +
+                  (row.checked_by ? '<div class="meta">av ' + esc(row.checked_by) + '</div>' : '') +
+                  (row.checked_note ? '<div class="meta">' + esc(row.checked_note) + '</div>' : '')
+                : '<span class="muted">Ingen kontroll registrert</span>';
+
+            var service = row.service_at
+                ? '<strong>' + esc(row.service_at) + '</strong>' +
+                  (row.service_by ? '<div class="meta">av ' + esc(row.service_by) + '</div>' : '') +
+                  (row.service_note ? '<div class="meta">' + esc(row.service_note) + '</div>' : '')
+                : '<span class="muted">Ingen service registrert</span>';
+
+            return '<article class="card equipment-card" data-inventory="' + row.inventory_id + '">' +
+                '<div class="equipment-top">' +
+                    '<div><div class="booking-product">' + esc(row.name) + '</div>' +
+                    (row.quantity > 1 ? '<div class="meta">Antall: ' + row.quantity + '</div>' : '') + '</div>' +
+                    '<span class="status-badge eq-' + esc(row.display_status) + '">' + esc(row.status_label) + '</span>' +
+                '</div>' +
+                (row.reason ? '<div class="equipment-reason">' + esc(row.reason) + '</div>' : '') +
+                '<div class="equipment-info">' +
+                    '<div class="info-box"><span>Siste / pågående leie</span>' + booking + '</div>' +
+                    '<div class="info-box"><span>Sist kontrollert</span>' + checked + '</div>' +
+                    '<div class="info-box"><span>Sist service</span>' + service + '</div>' +
+                '</div>' +
+                '<div class="equipment-actions">' +
+                    '<input class="equipment-note" type="text" maxlength="240" placeholder="Kort notat (valgfritt)">' +
+                    '<button class="btn success equipment-status" data-status="ready" type="button">Kontrollert – klar</button>' +
+                    '<button class="btn purple equipment-status" data-status="service" type="button">Service</button>' +
+                    '<button class="btn danger equipment-status" data-status="maintenance" type="button">Ikke klar</button>' +
+                    '<button class="btn secondary equipment-status" data-status="pending" type="button">Sett til kontroll</button>' +
+                '</div>' +
+            '</article>';
+        }).join('');
+
+        Array.prototype.forEach.call(list.querySelectorAll('.equipment-status'), function (btn) {
+            btn.addEventListener('click', function () {
+                var card = btn.closest('.equipment-card');
+                var inventoryId = Number(card.getAttribute('data-inventory'));
+                var note = card.querySelector('.equipment-note').value.trim();
+                var buttons = card.querySelectorAll('.equipment-status');
+
+                Array.prototype.forEach.call(buttons, function (b) { b.disabled = true; });
+
+                api('/equipment/' + inventoryId + '/status', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        status: btn.getAttribute('data-status'),
+                        note: note
+                    })
+                }).then(function (payload) {
+                    showNotice(payload.message || 'Utstyrsstatus er oppdatert.', true);
+                    renderEquipment(payload);
+                }).catch(function (err) {
+                    Array.prototype.forEach.call(buttons, function (b) { b.disabled = false; });
+                    showNotice(err.message, false);
+                });
+            });
+        });
+    }
+
+    function renderEquipmentCounts(counts) {
+        var box = document.getElementById('equipmentCounts');
+        var items = [
+            ['pending', 'Må kontrolleres'],
+            ['service', 'Service'],
+            ['maintenance', 'Ikke klar'],
+            ['out', 'Ute nå'],
+            ['ready', 'Klar']
+        ];
+
+        box.innerHTML = items.map(function (item) {
+            var key = item[0];
+            return '<button type="button" class="card status-count ' + (equipmentFilter === key ? 'active' : '') + '" data-filter="' + key + '">' +
+                '<strong>' + Number(counts[key] || 0) + '</strong><span>' + esc(item[1]) + '</span>' +
+            '</button>';
+        }).join('');
+
+        Array.prototype.forEach.call(box.querySelectorAll('.status-count'), function (btn) {
+            btn.addEventListener('click', function () {
+                var next = btn.getAttribute('data-filter');
+                equipmentFilter = equipmentFilter === next ? '' : next;
+                loadEquipment();
+            });
+        });
+    }
+
+    function loadProducts() {
+        var listEl = document.getElementById('productList');
+        var searchEl = document.getElementById('search');
+        listEl.innerHTML = '<div class="empty">Laster produkter ...</div>';
+
+        api('/products?search=' + encodeURIComponent(searchEl.value.trim())).then(function (data) {
             products = data.products || [];
-            renderList();
+            productsLoaded = true;
+            renderProductList();
+
             if (selectedId && products.some(function (p) { return p.id === selectedId; })) {
                 selectProduct(selectedId, false);
             }
@@ -62,7 +392,9 @@
         });
     }
 
-    function renderList() {
+    function renderProductList() {
+        var listEl = document.getElementById('productList');
+
         if (!products.length) {
             listEl.innerHTML = '<div class="empty">Ingen produkter funnet.</div>';
             return;
@@ -73,6 +405,7 @@
                 ? '<img class="thumb" src="' + esc(p.image) + '" alt="">'
                 : '<div class="thumb"></div>';
             var price = p.regular_price !== '' ? ' · ' + esc(p.regular_price) + ' kr' : '';
+
             return '<div class="product ' + (p.id === selectedId ? 'active' : '') + '" data-id="' + p.id + '">' +
                 image +
                 '<div class="product-main">' +
@@ -91,8 +424,9 @@
     }
 
     function selectProduct(id, fetchFresh) {
+        var editorEl = document.getElementById('editor');
         selectedId = id;
-        renderList();
+        renderProductList();
         editorEl.innerHTML = '<div class="empty">Laster produkt ...</div>';
 
         var source = fetchFresh === false
@@ -111,9 +445,10 @@
     }
 
     function renderEditor(p) {
+        var editorEl = document.getElementById('editor');
         var rental = p.type === 'redq_rental';
         var priceHint = rental
-            ? 'RnB-leieprisen styres av egne prisdata og er låst i første versjon. Vi kobler dette på i neste modul.'
+            ? 'RnB-leieprisen styres av egne prisdata og er låst i denne versjonen.'
             : 'Dette er WooCommerce-produktets ordinære grunnpris.';
 
         editorEl.innerHTML =
@@ -137,7 +472,7 @@
                         '<input id="regular_price" inputmode="decimal" value="' + esc(p.regular_price) + '"' + (rental ? ' disabled' : '') + '>' +
                     '</div>' +
                 '</div>' +
-                '<div class="hint" style="margin-top:-7px;margin-bottom:16px">' + esc(priceHint) + '</div>' +
+                '<div class="hint product-price-hint">' + esc(priceHint) + '</div>' +
                 '<div class="section-title">Depositum</div>' +
                 '<label class="check"><input id="deposit_enabled" type="checkbox"' + (p.deposit.enabled ? ' checked' : '') + '> <span>Depositum aktivert</span></label>' +
                 '<div class="field">' +
@@ -159,23 +494,22 @@
             saveBtn.disabled = true;
             saveBtn.textContent = 'Lagrer ...';
 
-            var payload = {
-                name: document.getElementById('name').value.trim(),
-                status: document.getElementById('status').value,
-                regular_price: priceInput.disabled ? null : priceInput.value.trim(),
-                deposit_enabled: document.getElementById('deposit_enabled').checked,
-                deposit_amount: document.getElementById('deposit_amount').value.trim()
-            };
-
             api('/product/' + p.id, {
                 method: 'POST',
-                body: JSON.stringify(payload)
+                body: JSON.stringify({
+                    name: document.getElementById('name').value.trim(),
+                    status: document.getElementById('status').value,
+                    regular_price: priceInput.disabled ? null : priceInput.value.trim(),
+                    deposit_enabled: document.getElementById('deposit_enabled').checked,
+                    deposit_amount: document.getElementById('deposit_amount').value.trim()
+                })
             }).then(function (updated) {
                 var index = products.findIndex(function (item) { return item.id === p.id; });
                 if (index >= 0) {
                     products[index] = updated;
                 }
-                renderList();
+
+                renderProductList();
                 renderEditor(updated);
                 showNotice('Produktet er lagret.', true);
             }).catch(function (err) {
@@ -186,11 +520,12 @@
         });
     }
 
-    searchEl.addEventListener('input', function () {
-        window.clearTimeout(timer);
-        timer = window.setTimeout(loadProducts, 300);
+    document.getElementById('search').addEventListener('input', function () {
+        window.clearTimeout(productTimer);
+        productTimer = window.setTimeout(loadProducts, 300);
     });
 
-    refreshEl.addEventListener('click', loadProducts);
-    loadProducts();
+    document.getElementById('refresh').addEventListener('click', loadProducts);
+
+    loadBookings();
 })();
