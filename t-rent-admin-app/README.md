@@ -2,9 +2,18 @@
 
 Mobilvennlig front-end for å administrere T-Rent uten å bruke wp-admin.
 
-## Versjon 0.3.0
+## Versjon 0.4.0
 
-Appen samler nå fire hovedområder på `/t-rent-app/`:
+Appen samler nå fem hovedområder på `/t-rent-app/`:
+
+### Forespørsler
+- viser RnB `request_quote` direkte i appen
+- **Godkjenn** setter RnB-status `quote-accepted`
+- **Avslå** setter RnB-status `quote-cancelled`
+- standard RnB-statusmail brukes ved godkjenning/avslag
+- intern kommentar kan lagres separat uten å sende en ekstra kundemelding
+- lagrede kommentarer vises igjen på forespørselen
+- godkjente forespørsler viser betalingslenke når RnB sin checkout-side finnes
 
 ### Bookinger
 - aktive, kommende og avsluttede RnB-bookinger
@@ -62,6 +71,7 @@ Denne branchen skal gjennomgås før live-installasjon. Når den er godkjent kop
 ## Felles søk
 Ett søkefelt øverst følger aktiv fane:
 - Bookinger: produkt, ordre, kunde, telefon, e-post, leiedato, bookingdato, status og betalingsmåte
+- Forespørsler: produkt, kunde, telefon, e-post, leiedato, status og interne kommentarer
 - Blokkeringer: produkt, produkt-ID og dato
 - Utstyr: navn, status, kontroll/service, notater, ordrenummer og bookingdatoer
 - Produkter: produktnavn via WooCommerce-søket
@@ -87,3 +97,7 @@ T-Rent Admin App kan installeres som en egen PWA på mobil:
 - egen manifest og service worker
 - service worker bruker ikke offline-cache av bookinger, kundeinformasjon eller andre private appdata
 - «Installer app»-knappen vises når nettleseren tilbyr installasjon
+
+
+## Endring i 0.4.0
+Forespørsler er lagt inn som egen appfane og er isolert fra RnB-kjernefilene. Appen bruker RnB sine registrerte forespørselsstatuser og e-postklasser, mens interne T-Rent-kommentarer lagres som egen post-meta på forespørselen.
