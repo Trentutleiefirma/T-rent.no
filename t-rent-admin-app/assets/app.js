@@ -131,7 +131,7 @@
             if (filter === 'all') {
                 phaseMatch = true;
             } else if (filter === 'open') {
-                phaseMatch = b.phase === 'active' || b.phase === 'upcoming';
+                phaseMatch = b.phase === 'ongoing' || b.phase === 'paused' || b.phase === 'upcoming';
             } else {
                 phaseMatch = b.phase === filter;
             }
@@ -200,8 +200,41 @@
                         '<div class="muted">' + esc(b.payment_method || '') + '</div>' +
                     '</div>' +
                 '</div>' +
+                '<div class="booking-state-bar">' +
+                    '<label>Endre T-Rent-status</label>' +
+                    '<select class="booking-state-select">' +
+                        '<option value="ongoing"' + (b.phase === 'ongoing' && !b.manual_state ? ' selected' : '') + '>Pågående</option>' +
+                        '<option value="paused"' + (b.manual_state === 'paused' ? ' selected' : '') + '>På pause</option>' +
+                        '<option value="completed"' + (b.manual_state === 'completed' || (b.phase === 'completed' && !b.manual_state) ? ' selected' : '') + '>Fullført</option>' +
+                    '</select>' +
+                    '<button class="btn secondary small-btn booking-state-save" type="button" data-order-id="' + b.order_id + '">Lagre status</button>' +
+                '</div>' +
             '</article>';
         }).join('');
+
+        Array.prototype.forEach.call(list.querySelectorAll('.booking-state-save'), function (btn) {
+            btn.addEventListener('click', function () {
+                var card = btn.closest('.booking-card');
+                var select = card.querySelector('.booking-state-select');
+                var orderId = Number(btn.getAttribute('data-order-id'));
+
+                btn.disabled = true;
+                btn.textContent = 'Lagrer ...';
+
+                api('/booking/' + orderId + '/state', {
+                    method: 'POST',
+                    body: JSON.stringify({state: select.value})
+                }).then(function (data) {
+                    bookings = data.bookings || [];
+                    renderBookings();
+                    showNotice('Bookingstatus er oppdatert.', true);
+                }).catch(function (err) {
+                    btn.disabled = false;
+                    btn.textContent = 'Lagre status';
+                    showNotice(err.message, false);
+                });
+            });
+        });
     }
 
     document.getElementById('bookingFilter').addEventListener('change', renderBookings);
