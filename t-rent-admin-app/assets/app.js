@@ -272,7 +272,7 @@
                     body: JSON.stringify({ids: ids})
                 }).then(function (data) {
                     blocks = data.blocks || [];
-                    renderBlocks(blocks);
+            renderBlocks(blocks);
                     showNotice(data.message || 'Blokkeringen er fjernet.', true);
                 }).catch(function (err) {
                     btn.disabled = false;
