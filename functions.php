@@ -566,3 +566,72 @@ JS;
 
     wp_add_inline_script('rnb-calendar', $trent_timepicker_fix, 'after');
 }, 100);
+
+
+/**
+ * T-Rent: purge cached rental product pages after an order changes.
+ *
+ * CALENDAR_DATA is printed into the product page, so a cached page can otherwise
+ * keep showing the old green/red calendar after a booking is confirmed.
+ */
+if (!function_exists('trent_rnb_purge_order_product_cache')) {
+    function trent_rnb_purge_order_product_cache($order_id)
+    {
+        $order_id = absint($order_id);
+
+        if (!$order_id || !function_exists('wc_get_order')) {
+            return;
+        }
+
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return;
+        }
+
+        $product_ids = [];
+
+        foreach ($order->get_items('line_item') as $item) {
+            $product_id = absint($item->get_product_id());
+
+            if (!$product_id) {
+                continue;
+            }
+
+            $product = wc_get_product($product_id);
+            if (!$product || $product->get_type() !== 'redq_rental') {
+                continue;
+            }
+
+            $product_ids[] = $product_id;
+        }
+
+        $product_ids = array_values(array_unique($product_ids));
+
+        foreach ($product_ids as $product_id) {
+            clean_post_cache($product_id);
+
+            if (function_exists('wc_delete_product_transients')) {
+                wc_delete_product_transients($product_id);
+            }
+
+            // LiteSpeed Cache listens to this action when active.
+            do_action('litespeed_purge_post', $product_id);
+        }
+    }
+}
+
+/**
+ * Purge after the normal checkout/thank-you flow.
+ * Priority 100 runs after RnB has activated its availability rows.
+ */
+add_action('woocommerce_thankyou', function ($order_id) {
+    trent_rnb_purge_order_product_cache($order_id);
+}, 100, 1);
+
+/**
+ * Purge whenever an order status changes so confirmed/cancelled bookings are
+ * reflected on the storefront without a manual cache clear.
+ */
+add_action('woocommerce_order_status_changed', function ($order_id, $old_status, $new_status, $order) {
+    trent_rnb_purge_order_product_cache($order_id);
+}, 100, 4);
