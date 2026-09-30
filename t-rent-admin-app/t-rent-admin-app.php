@@ -2,7 +2,7 @@
 /**
  * Plugin Name: T-Rent Admin App
  * Description: Mobilvennlig front-end app for sikker administrasjon av T-Rent WooCommerce uten wp-admin.
- * Version: 0.3.0
+ * Version: 0.4.0
  * Author: T-Rent
  * Requires Plugins: woocommerce
  * Requires PHP: 7.4
@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
 
 final class TRent_Admin_App
 {
-    const VERSION = '0.3.0';
+    const VERSION = '0.4.0';
     const QUERY_VAR = 'trent_app';
     const REST_NAMESPACE = 't-rent-app/v1';
 
@@ -189,6 +189,7 @@ final class TRent_Admin_App
 
     <nav class="app-nav" aria-label="T-Rent App">
         <button class="nav-btn active" data-view="bookings" type="button">Bookinger</button>
+        <button class="nav-btn" data-view="quotes" type="button">Forespørsler</button>
         <button class="nav-btn" data-view="blocks" type="button">Blokker dato</button>
         <button class="nav-btn" data-view="equipment" type="button">Utstyr</button>
         <button class="nav-btn" data-view="products" type="button">Produkter</button>
@@ -220,6 +221,29 @@ final class TRent_Admin_App
             </div>
         </div>
         <div id="bookingList"><div class="card empty">Laster bookinger ...</div></div>
+    </section>
+
+    <section id="view-quotes" class="view">
+        <div class="card section-toolbar">
+            <div>
+                <div class="section-title compact">Forespørsler</div>
+                <div class="hint">Godkjenn eller avslå RnB-forespørsler. Interne kommentarer lagres i T-Rent App.</div>
+            </div>
+            <div class="toolbar-actions">
+                <select id="quoteFilter" class="small-select">
+                    <option value="open">Nye + behandles + på vent</option>
+                    <option value="all">Alle</option>
+                    <option value="quote-pending">Venter på svar</option>
+                    <option value="quote-processing">Behandles</option>
+                    <option value="quote-on-hold">På vent</option>
+                    <option value="quote-accepted">Godkjent</option>
+                    <option value="quote-cancelled">Avslått</option>
+                    <option value="quote-completed">Fullført</option>
+                </select>
+                <button id="quoteRefresh" class="btn secondary" type="button">Oppdater</button>
+            </div>
+        </div>
+        <div id="quoteList"><div class="card empty">Laster forespørsler ...</div></div>
     </section>
 
     <section id="view-blocks" class="view">
@@ -506,6 +530,7 @@ final class TRent_Admin_App
 
 require_once __DIR__ . '/includes/class-trent-app-rental.php';
 require_once __DIR__ . '/includes/class-trent-app-bookings.php';
+require_once __DIR__ . '/includes/class-trent-app-quotes.php';
 require_once __DIR__ . '/includes/class-trent-app-date-blocks.php';
 require_once __DIR__ . '/includes/class-trent-app-equipment.php';
 
