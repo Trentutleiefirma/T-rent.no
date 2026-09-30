@@ -511,9 +511,13 @@ jQuery(document).ready(function ($) {
       disabledWeekDays: offDays,
       scrollInput: false,
       onGenerate: function () {
+        const statusDates = Array.isArray(CALENDAR_DATA.status_dates)
+          ? CALENDAR_DATA.status_dates
+          : CALENDAR_DATA.block_dates;
+
         markTRentCalendarDays(
           this,
-          CALENDAR_DATA.block_dates,
+          statusDates,
           conditional_data.date_format
         );
       },
