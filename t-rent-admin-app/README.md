@@ -57,3 +57,13 @@ Samme statusdata som T-Rent Utstyrskontroll:
 
 ## Installering
 Denne branchen skal gjennomgås før live-installasjon. Når den er godkjent kopieres hele mappen `t-rent-admin-app` til `wp-content/plugins/`, pluginet aktiveres og appen åpnes på `/t-rent-app/`.
+
+
+## Felles søk
+Ett søkefelt øverst følger aktiv fane:
+- Bookinger: produkt, ordre, kunde, telefon, e-post, leiedato, bookingdato, status og betalingsmåte
+- Blokkeringer: produkt, produkt-ID og dato
+- Utstyr: navn, status, kontroll/service, notater, ordrenummer og bookingdatoer
+- Produkter: produktnavn via WooCommerce-søket
+
+Søket filtrerer bare visningen og endrer ingen data.
