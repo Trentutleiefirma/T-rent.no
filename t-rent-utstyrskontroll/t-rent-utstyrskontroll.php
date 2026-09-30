@@ -2,7 +2,7 @@
 /**
  * Plugin Name: T-Rent Utstyrskontroll
  * Description: Kontrollstatus for RnB-utstyr etter utleie, med egen kontrollside i WooCommerce.
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: T-Rent
  * Requires Plugins: woocommerce
  */
@@ -203,6 +203,7 @@ class Manager
         $rows = $this->equipment_rows();
         $counts = [
             'pending'     => 0,
+            'service'     => 0,
             'maintenance' => 0,
             'out'         => 0,
             'ready'       => 0,
@@ -218,7 +219,7 @@ class Manager
             ? sanitize_key(wp_unslash($_GET['t_rent_status']))
             : '';
 
-        if (!in_array($filter, ['pending', 'maintenance', 'out', 'ready'], true)) {
+        if (!in_array($filter, ['pending', 'service', 'maintenance', 'out', 'ready'], true)) {
             $filter = '';
         }
 
@@ -234,11 +235,12 @@ class Manager
         }
 
         echo '<style>';
-        echo '.tr-counts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 18px}.tr-count-link{display:block;color:inherit;text-decoration:none;border-radius:9px;outline:none}.tr-count{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:13px;transition:transform .12s ease,box-shadow .12s ease}.tr-count-link:active .tr-count{transform:scale(.98)}.tr-count-link:focus-visible .tr-count,.tr-count-active{box-shadow:0 0 0 3px rgba(37,99,235,.18)}.tr-count b{display:block;font-size:25px}.tr-count span{color:#6b7280;font-size:13px}.tr-filterbar{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px;margin:-6px 0 18px}.tr-filterbar strong{font-size:14px}.tr-filterbar a{font-size:14px;font-weight:700;color:#1d4ed8;text-decoration:none}.tr-table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden}.tr-table th,.tr-table td{text-align:left;padding:12px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top}.tr-table th{background:#f9fafb;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280}.tr-table tr:last-child td{border-bottom:0}.tr-badge{display:inline-block;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:700;white-space:nowrap}.tr-badge-pending{background:#fff7ed;color:#9a3412}.tr-badge-maintenance{background:#fef2f2;color:#991b1b}.tr-badge-out{background:#eff6ff;color:#1e40af}.tr-badge-ready{background:#ecfdf5;color:#065f46}.tr-small{font-size:12px;line-height:1.45;color:#6b7280}.tr-actions{min-width:310px}.tr-form{display:grid;grid-template-columns:minmax(120px,1fr) auto auto;gap:6px;align-items:center}.tr-form input[type=text]{min-width:0;border:1px solid #d1d5db;border-radius:6px;padding:8px}.tr-btn{border:0;border-radius:6px;padding:8px 10px;font-weight:700;cursor:pointer}.tr-ready{background:#047857;color:#fff}.tr-hold{background:#fee2e2;color:#991b1b}.tr-reset{background:#ffedd5;color:#9a3412}.tr-empty{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:28px;text-align:center;color:#6b7280}@media(max-width:800px){.tr-counts{grid-template-columns:repeat(2,minmax(0,1fr))}.tr-table,.tr-table tbody,.tr-table tr,.tr-table td{display:block}.tr-table thead{display:none}.tr-table tr{border-bottom:7px solid #f3f4f6;padding:7px 0}.tr-table td{border:0;padding:6px 12px}.tr-table td:before{content:attr(data-label);display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:2px}.tr-actions{min-width:0}.tr-form{grid-template-columns:1fr 1fr}.tr-form input[type=text]{grid-column:1/-1}.tr-form .tr-wide{grid-column:1/-1}}';
+        echo '.tr-counts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:0 0 18px}.tr-count-link{display:block;color:inherit;text-decoration:none;border-radius:9px;outline:none}.tr-count{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:13px;transition:transform .12s ease,box-shadow .12s ease}.tr-count-link:active .tr-count{transform:scale(.98)}.tr-count-link:focus-visible .tr-count,.tr-count-active{box-shadow:0 0 0 3px rgba(37,99,235,.18)}.tr-count b{display:block;font-size:25px}.tr-count span{color:#6b7280;font-size:13px}.tr-filterbar{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px;margin:-6px 0 18px}.tr-filterbar strong{font-size:14px}.tr-filterbar a{font-size:14px;font-weight:700;color:#1d4ed8;text-decoration:none}.tr-table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden}.tr-table th,.tr-table td{text-align:left;padding:12px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top}.tr-table th{background:#f9fafb;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280}.tr-table tr:last-child td{border-bottom:0}.tr-badge{display:inline-block;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:700;white-space:nowrap}.tr-badge-pending{background:#fff7ed;color:#9a3412}.tr-badge-service{background:#f5f3ff;color:#6d28d9}.tr-badge-maintenance{background:#fef2f2;color:#991b1b}.tr-badge-out{background:#eff6ff;color:#1e40af}.tr-badge-ready{background:#ecfdf5;color:#065f46}.tr-small{font-size:12px;line-height:1.45;color:#6b7280}.tr-actions{min-width:310px}.tr-form{display:grid;grid-template-columns:minmax(120px,1fr) auto auto;gap:6px;align-items:center}.tr-form input[type=text]{min-width:0;border:1px solid #d1d5db;border-radius:6px;padding:8px}.tr-btn{border:0;border-radius:6px;padding:8px 10px;font-weight:700;cursor:pointer}.tr-ready{background:#047857;color:#fff}.tr-hold{background:#fee2e2;color:#991b1b}.tr-service{background:#ede9fe;color:#5b21b6}.tr-reset{background:#ffedd5;color:#9a3412}.tr-empty{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:28px;text-align:center;color:#6b7280}@media(max-width:800px){.tr-counts{grid-template-columns:repeat(2,minmax(0,1fr))}.tr-table,.tr-table tbody,.tr-table tr,.tr-table td{display:block}.tr-table thead{display:none}.tr-table tr{border-bottom:7px solid #f3f4f6;padding:7px 0}.tr-table td{border:0;padding:6px 12px}.tr-table td:before{content:attr(data-label);display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:2px}.tr-actions{min-width:0}.tr-form{grid-template-columns:1fr 1fr}.tr-form input[type=text]{grid-column:1/-1}.tr-form .tr-wide{grid-column:1/-1}}';
         echo '</style>';
 
         echo '<div class="tr-counts">';
         $this->count_card($counts['pending'], 'Må kontrolleres', '#f97316', 'pending', $filter, $public, $token);
+        $this->count_card($counts['service'], 'Service', '#7c3aed', 'service', $filter, $public, $token);
         $this->count_card($counts['maintenance'], 'Ikke klar', '#dc2626', 'maintenance', $filter, $public, $token);
         $this->count_card($counts['out'], 'Ute nå', '#2563eb', 'out', $filter, $public, $token);
         $this->count_card($counts['ready'], 'Kontrollert og klar', '#059669', 'ready', $filter, $public, $token);
@@ -348,6 +350,12 @@ class Manager
         if ($status !== 'maintenance') {
             echo '<button class="tr-btn tr-hold" type="submit" name="t_rent_control_action" value="maintenance">Ikke klar</button>';
         } else {
+            echo '<button class="tr-btn tr-reset" type="submit" name="t_rent_control_action" value="pending">Til ny kontroll</button>';
+        }
+
+        if ($status !== 'service') {
+            echo '<button class="tr-btn tr-service" type="submit" name="t_rent_control_action" value="service">Service</button>';
+        } else {
             echo '<button class="tr-btn tr-reset tr-wide" type="submit" name="t_rent_control_action" value="pending">Til ny kontroll</button>';
         }
 
@@ -426,6 +434,9 @@ class Manager
             if ($stored_status === 'maintenance') {
                 $display_status = 'maintenance';
                 $reason = 'Registrert som ikke klar for utleie.';
+            } elseif ($stored_status === 'service') {
+                $display_status = 'service';
+                $reason = 'Registrert til service.';
             } elseif ($stored_status === 'pending') {
                 $display_status = 'pending';
                 $reason = 'Manuelt satt til kontroll.';
@@ -462,7 +473,7 @@ class Manager
             ];
         }
 
-        $priority = ['pending' => 0, 'maintenance' => 1, 'out' => 2, 'ready' => 3];
+        $priority = ['pending' => 0, 'service' => 1, 'maintenance' => 2, 'out' => 3, 'ready' => 4];
         usort($rows, function ($a, $b) use ($priority) {
             $a_priority = isset($priority[$a['display_status']]) ? $priority[$a['display_status']] : 9;
             $b_priority = isset($priority[$b['display_status']]) ? $priority[$b['display_status']] : 9;
@@ -778,7 +789,7 @@ class Manager
             return 'Kunne ikke finne utstyret.';
         }
 
-        if (!in_array($action, ['ready', 'pending', 'maintenance'], true)) {
+        if (!in_array($action, ['ready', 'pending', 'service', 'maintenance'], true)) {
             return 'Ugyldig kontrollstatus.';
         }
 
@@ -827,6 +838,11 @@ class Manager
             update_post_meta($inventory_id, self::CHECKED_BY_META, $actor);
             update_post_meta($inventory_id, self::CHECKED_NOTE_META, $note);
             $message = get_the_title($inventory_id) . ' er registrert som ikke klar for utleie.';
+        } elseif ($action === 'service') {
+            update_post_meta($inventory_id, self::STATUS_META, 'service');
+            update_post_meta($inventory_id, self::CHECKED_BY_META, $actor);
+            update_post_meta($inventory_id, self::CHECKED_NOTE_META, $note);
+            $message = get_the_title($inventory_id) . ' er satt til service.';
         } else {
             update_post_meta($inventory_id, self::STATUS_META, 'pending');
             update_post_meta($inventory_id, self::CHECKED_BY_META, $actor);
@@ -892,6 +908,7 @@ class Manager
     {
         $labels = [
             'pending'     => 'Må kontrolleres',
+            'service'     => 'Service',
             'maintenance' => 'Ikke klar',
             'out'         => 'Ute på leie',
             'ready'       => 'Kontrollert og klar',
