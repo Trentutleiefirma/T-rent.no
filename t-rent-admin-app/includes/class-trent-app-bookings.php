@@ -7,6 +7,7 @@ if (!defined('ABSPATH')) {
 final class TRent_Admin_App_Bookings
 {
     const REST_NAMESPACE = 't-rent-app/v1';
+    const STATE_META = '_t_rent_app_booking_state';
 
     public static function register()
     {
@@ -20,6 +21,48 @@ final class TRent_Admin_App_Bookings
             'callback' => [__CLASS__, 'rest_bookings'],
             'permission_callback' => ['TRent_Admin_App', 'rest_permission'],
         ]);
+
+        register_rest_route(self::REST_NAMESPACE, '/booking/(?P<id>\\d+)/state', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => [__CLASS__, 'rest_update_state'],
+            'permission_callback' => ['TRent_Admin_App', 'rest_permission'],
+        ]);
+    }
+
+    public static function rest_update_state(WP_REST_Request $request)
+    {
+        if (!function_exists('wc_get_order')) {
+            return new WP_Error('trent_wc_missing', 'WooCommerce er ikke tilgjengelig.', ['status' => 500]);
+        }
+
+        $order_id = absint($request['id']);
+        $order = wc_get_order($order_id);
+
+        if (!$order) {
+            return new WP_Error('trent_order_missing', 'Bookingen ble ikke funnet.', ['status' => 404]);
+        }
+
+        $data = $request->get_json_params();
+        $data = is_array($data) ? $data : [];
+        $state = isset($data['state']) ? sanitize_key($data['state']) : '';
+
+        if (!in_array($state, ['ongoing', 'paused', 'completed'], true)) {
+            return new WP_Error('trent_invalid_booking_state', 'Ugyldig bookingstatus.', ['status' => 400]);
+        }
+
+        if ($state === 'ongoing') {
+            $order->delete_meta_data(self::STATE_META);
+        } else {
+            $order->update_meta_data(self::STATE_META, $state);
+        }
+
+        try {
+            $order->save();
+        } catch (Throwable $e) {
+            return new WP_Error('trent_booking_state_save_failed', 'Kunne ikke lagre bookingstatusen.', ['status' => 500]);
+        }
+
+        return self::rest_bookings();
     }
 
     public static function rest_bookings()
@@ -62,9 +105,21 @@ final class TRent_Admin_App_Bookings
                     continue;
                 }
 
-                if ($period['start_ts'] <= $now && $period['return_ts'] > $now) {
-                    $phase = 'active';
-                    $phase_label = 'Ute nå';
+                $manual_state = sanitize_key((string) $order->get_meta(self::STATE_META, true));
+
+                if ($manual_state === 'paused') {
+                    $phase = 'paused';
+                    $phase_label = 'På pause';
+                    $sort_group = 0;
+                    $sort_ts = $period['return_ts'];
+                } elseif ($manual_state === 'completed') {
+                    $phase = 'completed';
+                    $phase_label = 'Fullført';
+                    $sort_group = 2;
+                    $sort_ts = -$period['return_ts'];
+                } elseif ($period['start_ts'] <= $now && $period['return_ts'] > $now) {
+                    $phase = 'ongoing';
+                    $phase_label = 'Pågående';
                     $sort_group = 0;
                     $sort_ts = $period['return_ts'];
                 } elseif ($period['start_ts'] > $now) {
@@ -74,7 +129,7 @@ final class TRent_Admin_App_Bookings
                     $sort_ts = $period['start_ts'];
                 } else {
                     $phase = 'completed';
-                    $phase_label = 'Avsluttet';
+                    $phase_label = 'Fullført';
                     $sort_group = 2;
                     $sort_ts = -$period['return_ts'];
                 }
@@ -100,6 +155,7 @@ final class TRent_Admin_App_Bookings
                     'status_label' => wc_get_order_status_name($order->get_status()),
                     'phase' => $phase,
                     'phase_label' => $phase_label,
+                    'manual_state' => $manual_state,
                     'booking_created_ts' => $order_date_ts,
                     'booking_created' => $order_date_ts ? TRent_Admin_App_Rental::format_timestamp($order_date_ts, true) : '',
                     'pickup_ts' => (int) $period['start_ts'],
