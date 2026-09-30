@@ -4,6 +4,8 @@
     var cfg = window.TRentApp || {};
     var noticeEl = document.getElementById('notice');
     var globalSearchEl = document.getElementById('globalSearch');
+    var installAppEl = document.getElementById('installApp');
+    var deferredInstallPrompt = null;
     var activeView = 'bookings';
 
     var products = [];
@@ -684,6 +686,51 @@
     });
 
     document.getElementById('refresh').addEventListener('click', loadProducts);
+
+    if ('serviceWorker' in navigator && cfg.serviceWorkerUrl) {
+        window.addEventListener('load', function () {
+            navigator.serviceWorker.register(cfg.serviceWorkerUrl, {
+                scope: cfg.appScope || '/t-rent-app/'
+            }).catch(function () {
+                // PWA-installasjon er valgfri. Appen skal fortsatt fungere uten service worker.
+            });
+        });
+    }
+
+    window.addEventListener('beforeinstallprompt', function (event) {
+        event.preventDefault();
+        deferredInstallPrompt = event;
+        if (installAppEl) {
+            installAppEl.hidden = false;
+        }
+    });
+
+    if (installAppEl) {
+        installAppEl.addEventListener('click', function () {
+            if (!deferredInstallPrompt) {
+                showNotice('Åpne T-RENT APP i Chrome og prøv igjen når installasjonsknappen blir tilgjengelig.', false);
+                return;
+            }
+
+            deferredInstallPrompt.prompt();
+            deferredInstallPrompt.userChoice.then(function () {
+                deferredInstallPrompt = null;
+                installAppEl.hidden = true;
+            });
+        });
+    }
+
+    window.addEventListener('appinstalled', function () {
+        deferredInstallPrompt = null;
+        if (installAppEl) {
+            installAppEl.hidden = true;
+        }
+        showNotice('T-RENT APP er installert på enheten.', true);
+    });
+
+    if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches && installAppEl) {
+        installAppEl.hidden = true;
+    }
 
     setSearchPlaceholder('bookings');
     loadBookings();
