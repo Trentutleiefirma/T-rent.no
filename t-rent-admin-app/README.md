@@ -2,7 +2,7 @@
 
 Mobilvennlig front-end for å administrere T-Rent uten å bruke wp-admin.
 
-## Versjon 0.2.0
+## Versjon 0.3.0
 
 Appen samler nå fire hovedområder på `/t-rent-app/`:
 
@@ -77,3 +77,13 @@ T-Rent App har en egen driftsstatus som ikke endrer WooCommerce betalings-/ordre
 - Kommende: booking som ikke har startet ennå
 
 Status kan endres fra bookingkortet i appen og lagres på WooCommerce-ordren via WooCommerce CRUD.
+
+
+## PWA
+T-Rent Admin App kan installeres som en egen PWA på mobil:
+- egen app-identitet på `/t-rent-app/`, separat fra eventuell eksisterende T-Rent-PWA
+- navn: T-RENT APP
+- standalone-visning uten vanlig nettleserlinje
+- egen manifest og service worker
+- service worker bruker ikke offline-cache av bookinger, kundeinformasjon eller andre private appdata
+- «Installer app»-knappen vises når nettleseren tilbyr installasjon
