@@ -3,12 +3,16 @@
 
     var cfg = window.TRentApp || {};
     var noticeEl = document.getElementById('notice');
+    var globalSearchEl = document.getElementById('globalSearch');
+    var activeView = 'bookings';
 
     var products = [];
     var selectedId = null;
     var productTimer = null;
 
     var bookings = [];
+    var blocks = [];
+    var equipmentData = {rows: [], counts: {}};
     var bookingsLoaded = false;
     var blocksLoaded = false;
     var equipmentLoaded = false;
@@ -19,6 +23,32 @@
         return String(value == null ? '' : value).replace(/[&<>'"]/g, function (ch) {
             return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch];
         });
+    }
+
+    function searchQuery() {
+        return (globalSearchEl && globalSearchEl.value ? globalSearchEl.value : '').trim().toLowerCase();
+    }
+
+    function searchMatch(values) {
+        var query = searchQuery();
+        if (!query) {
+            return true;
+        }
+
+        return values.map(function (value) {
+            return String(value == null ? '' : value).toLowerCase();
+        }).join(' ').indexOf(query) !== -1;
+    }
+
+    function setSearchPlaceholder(name) {
+        var labels = {
+            bookings: 'Søk i bookinger, kunde, telefon, e-post, ordre ...',
+            blocks: 'Søk i blokkeringer, produkt eller dato ...',
+            equipment: 'Søk i utstyr, status, service, ordre ...',
+            products: 'Søk i produkter ...'
+        };
+
+        globalSearchEl.placeholder = labels[name] || 'Søk ...';
     }
 
     function showNotice(message, ok) {
@@ -51,6 +81,9 @@
     }
 
     function activateView(name) {
+        activeView = name;
+        setSearchPlaceholder(name);
+
         Array.prototype.forEach.call(document.querySelectorAll('.view'), function (view) {
             view.classList.toggle('active', view.id === 'view-' + name);
         });
@@ -59,13 +92,13 @@
             btn.classList.toggle('active', btn.getAttribute('data-view') === name);
         });
 
-        if (name === 'bookings' && !bookingsLoaded) {
-            loadBookings();
-        } else if (name === 'blocks' && !blocksLoaded) {
-            loadBlocks();
-        } else if (name === 'equipment' && !equipmentLoaded) {
-            loadEquipment();
-        } else if (name === 'products' && !productsLoaded) {
+        if (name === 'bookings') {
+            bookingsLoaded ? renderBookings() : loadBookings();
+        } else if (name === 'blocks') {
+            blocksLoaded ? renderBlocks(blocks) : loadBlocks();
+        } else if (name === 'equipment') {
+            equipmentLoaded ? renderEquipment(equipmentData) : loadEquipment();
+        } else if (name === 'products') {
             loadProducts();
         }
     }
@@ -94,13 +127,34 @@
         var list = document.getElementById('bookingList');
         var filter = document.getElementById('bookingFilter').value;
         var visible = bookings.filter(function (b) {
+            var phaseMatch;
             if (filter === 'all') {
-                return true;
+                phaseMatch = true;
+            } else if (filter === 'open') {
+                phaseMatch = b.phase === 'active' || b.phase === 'upcoming';
+            } else {
+                phaseMatch = b.phase === filter;
             }
-            if (filter === 'open') {
-                return b.phase === 'active' || b.phase === 'upcoming';
+
+            if (!phaseMatch) {
+                return false;
             }
-            return b.phase === filter;
+
+            return searchMatch([
+                b.product_name,
+                b.order_number,
+                b.status_label,
+                b.phase_label,
+                b.booking_created,
+                b.pickup,
+                b.return,
+                b.customer_name,
+                b.phone,
+                b.email,
+                b.total,
+                b.currency,
+                b.payment_method
+            ]);
         });
 
         if (!visible.length) {
@@ -159,8 +213,9 @@
 
         api('/blocks').then(function (data) {
             blocksLoaded = true;
+            blocks = data.blocks || [];
             renderBlockProducts(data.products || []);
-            renderBlocks(data.blocks || []);
+            renderBlocks(blocks);
         }).catch(function (err) {
             list.innerHTML = '<div class="empty">Kunne ikke laste blokkeringer.</div>';
             showNotice(err.message, false);
@@ -181,6 +236,15 @@
 
     function renderBlocks(items) {
         var list = document.getElementById('blockList');
+        items = (items || []).filter(function (b) {
+            return searchMatch([
+                b.product_id,
+                b.product_name,
+                b.from,
+                b.to,
+                b.inventory_count
+            ]);
+        });
 
         if (!items.length) {
             list.innerHTML = '<div class="empty">Ingen aktive manuelle blokkeringer.</div>';
@@ -207,7 +271,8 @@
                     method: 'POST',
                     body: JSON.stringify({ids: ids})
                 }).then(function (data) {
-                    renderBlocks(data.blocks || []);
+                    blocks = data.blocks || [];
+                    renderBlocks(blocks);
                     showNotice(data.message || 'Blokkeringen er fjernet.', true);
                 }).catch(function (err) {
                     btn.disabled = false;
@@ -232,7 +297,8 @@
                 to_date: document.getElementById('blockTo').value
             })
         }).then(function (data) {
-            renderBlocks(data.blocks || []);
+            blocks = data.blocks || [];
+                    renderBlocks(blocks);
             showNotice(data.message || 'Datoen er blokkert.', true);
             button.disabled = false;
             button.textContent = 'Blokker dato';
@@ -253,7 +319,8 @@
 
         api('/equipment').then(function (data) {
             equipmentLoaded = true;
-            renderEquipment(data);
+            equipmentData = data;
+            renderEquipment(equipmentData);
         }).catch(function (err) {
             list.innerHTML = '<div class="card empty">Kunne ikke laste utstyr.</div>';
             showNotice(err.message, false);
@@ -267,6 +334,34 @@
         var visible = equipmentFilter
             ? rows.filter(function (row) { return row.display_status === equipmentFilter; })
             : rows;
+
+        visible = visible.filter(function (row) {
+            var active = row.active_booking || {};
+            var last = row.last_returned || {};
+            var next = row.next_booking || {};
+
+            return searchMatch([
+                row.inventory_id,
+                row.name,
+                row.status_label,
+                row.reason,
+                row.checked_at,
+                row.checked_by,
+                row.checked_note,
+                row.service_at,
+                row.service_by,
+                row.service_note,
+                active.order_id,
+                active.start,
+                active.return,
+                last.order_id,
+                last.start,
+                last.return,
+                next.order_id,
+                next.start,
+                next.return
+            ]);
+        });
 
         if (!visible.length) {
             list.innerHTML = '<div class="card empty">Ingen utstyr i dette utvalget.</div>';
@@ -338,7 +433,8 @@
                     })
                 }).then(function (payload) {
                     showNotice(payload.message || 'Utstyrsstatus er oppdatert.', true);
-                    renderEquipment(payload);
+                    equipmentData = payload;
+                    renderEquipment(equipmentData);
                 }).catch(function (err) {
                     Array.prototype.forEach.call(buttons, function (b) { b.disabled = false; });
                     showNotice(err.message, false);
@@ -375,10 +471,9 @@
 
     function loadProducts() {
         var listEl = document.getElementById('productList');
-        var searchEl = document.getElementById('search');
         listEl.innerHTML = '<div class="empty">Laster produkter ...</div>';
 
-        api('/products?search=' + encodeURIComponent(searchEl.value.trim())).then(function (data) {
+        api('/products?search=' + encodeURIComponent(globalSearchEl.value.trim())).then(function (data) {
             products = data.products || [];
             productsLoaded = true;
             renderProductList();
@@ -520,12 +615,43 @@
         });
     }
 
-    document.getElementById('search').addEventListener('input', function () {
+    globalSearchEl.addEventListener('input', function () {
         window.clearTimeout(productTimer);
-        productTimer = window.setTimeout(loadProducts, 300);
+        productTimer = window.setTimeout(function () {
+            if (activeView === 'bookings') {
+                renderBookings();
+            } else if (activeView === 'blocks') {
+                renderBlocks(blocks);
+            } else if (activeView === 'equipment') {
+                renderEquipment(equipmentData);
+            } else if (activeView === 'products') {
+                loadProducts();
+            }
+        }, activeView === 'products' ? 300 : 120);
+    });
+
+    document.getElementById('globalSearchClear').addEventListener('click', function () {
+        if (!globalSearchEl.value) {
+            return;
+        }
+
+        globalSearchEl.value = '';
+
+        if (activeView === 'bookings') {
+            renderBookings();
+        } else if (activeView === 'blocks') {
+            renderBlocks(blocks);
+        } else if (activeView === 'equipment') {
+            renderEquipment(equipmentData);
+        } else if (activeView === 'products') {
+            loadProducts();
+        }
+
+        globalSearchEl.focus();
     });
 
     document.getElementById('refresh').addEventListener('click', loadProducts);
 
+    setSearchPlaceholder('bookings');
     loadBookings();
 })();
