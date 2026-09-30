@@ -13,9 +13,11 @@
     var productTimer = null;
 
     var bookings = [];
+    var quotes = [];
     var blocks = [];
     var equipmentData = {rows: [], counts: {}};
     var bookingsLoaded = false;
+    var quotesLoaded = false;
     var blocksLoaded = false;
     var equipmentLoaded = false;
     var productsLoaded = false;
@@ -45,6 +47,7 @@
     function setSearchPlaceholder(name) {
         var labels = {
             bookings: 'Søk i bookinger, kunde, telefon, e-post, ordre ...',
+            quotes: 'Søk i forespørsler, kunde, produkt, dato eller kommentar ...',
             blocks: 'Søk i blokkeringer, produkt eller dato ...',
             equipment: 'Søk i utstyr, status, service, ordre ...',
             products: 'Søk i produkter ...'
@@ -96,6 +99,8 @@
 
         if (name === 'bookings') {
             bookingsLoaded ? renderBookings() : loadBookings();
+        } else if (name === 'quotes') {
+            quotesLoaded ? renderQuotes() : loadQuotes();
         } else if (name === 'blocks') {
             blocksLoaded ? renderBlocks(blocks) : loadBlocks();
         } else if (name === 'equipment') {
@@ -241,6 +246,189 @@
 
     document.getElementById('bookingFilter').addEventListener('change', renderBookings);
     document.getElementById('bookingRefresh').addEventListener('click', loadBookings);
+
+    function loadQuotes() {
+        var list = document.getElementById('quoteList');
+        list.innerHTML = '<div class="card empty">Laster forespørsler ...</div>';
+
+        api('/quotes').then(function (data) {
+            quotes = data.quotes || [];
+            quotesLoaded = true;
+            renderQuotes();
+        }).catch(function (err) {
+            list.innerHTML = '<div class="card empty">Kunne ikke laste forespørsler.</div>';
+            showNotice(err.message, false);
+        });
+    }
+
+    function renderQuotes() {
+        var list = document.getElementById('quoteList');
+        var filter = document.getElementById('quoteFilter').value;
+        var visible = quotes.filter(function (q) {
+            var statusMatch;
+
+            if (filter === 'all') {
+                statusMatch = true;
+            } else if (filter === 'open') {
+                statusMatch = q.status === 'quote-pending' ||
+                    q.status === 'quote-processing' ||
+                    q.status === 'quote-on-hold';
+            } else {
+                statusMatch = q.status === filter;
+            }
+
+            if (!statusMatch) {
+                return false;
+            }
+
+            var noteText = (q.notes || []).map(function (note) {
+                return [note.text, note.author, note.created_at].join(' ');
+            }).join(' ');
+
+            return searchMatch([
+                q.id,
+                q.product_id,
+                q.product_name,
+                q.status_label,
+                q.created,
+                q.pickup,
+                q.return,
+                q.customer_name,
+                q.phone,
+                q.email,
+                q.quote_price,
+                q.currency,
+                noteText
+            ]);
+        });
+
+        if (!visible.length) {
+            list.innerHTML = '<div class="card empty">Ingen forespørsler i dette utvalget.</div>';
+            return;
+        }
+
+        list.innerHTML = visible.map(function (q) {
+            var phone = q.phone
+                ? '<a class="contact-link" href="tel:' + esc(q.phone) + '">' + esc(q.phone) + '</a>'
+                : '<span class="muted">Ingen telefon</span>';
+            var email = q.email
+                ? '<a class="contact-link" href="mailto:' + esc(q.email) + '">' + esc(q.email) + '</a>'
+                : '<span class="muted">Ingen e-post</span>';
+            var price = q.quote_price !== ''
+                ? '<strong>' + esc(q.quote_price) + ' ' + esc(q.currency) + '</strong>'
+                : '<span class="muted">Ikke satt</span>';
+            var canDecide = q.status === 'quote-pending' ||
+                q.status === 'quote-processing' ||
+                q.status === 'quote-on-hold';
+            var notes = (q.notes || []).slice().reverse().slice(0, 5).map(function (note) {
+                return '<div class="quote-note">' +
+                    '<div>' + esc(note.text).replace(/\n/g, '<br>') + '</div>' +
+                    '<div class="meta">' + esc(note.author || '') + (note.created_at ? ' · ' + esc(note.created_at) : '') + '</div>' +
+                '</div>';
+            }).join('');
+
+            return '<article class="card quote-card" data-quote-id="' + q.id + '">' +
+                '<div class="booking-top">' +
+                    '<div>' +
+                        '<div class="booking-product">' + esc(q.product_name) + '</div>' +
+                        '<div class="meta">Forespørsel #' + q.id + (q.created ? ' · ' + esc(q.created) : '') + '</div>' +
+                    '</div>' +
+                    '<span class="status-badge status-' + esc(q.status) + '">' + esc(q.status_label) + '</span>' +
+                '</div>' +
+                '<div class="quote-grid">' +
+                    '<div class="info-box important">' +
+                        '<span>Leieperiode</span>' +
+                        '<strong>' + esc(q.pickup || 'Ukjent') + '</strong>' +
+                        '<strong>→ ' + esc(q.return || 'Ukjent') + '</strong>' +
+                    '</div>' +
+                    '<div class="info-box">' +
+                        '<span>Kunde</span>' +
+                        '<strong>' + esc(q.customer_name) + '</strong>' +
+                        '<div>' + phone + '</div>' +
+                        '<div>' + email + '</div>' +
+                    '</div>' +
+                    '<div class="info-box">' +
+                        '<span>Tilbudspris</span>' +
+                        price +
+                    '</div>' +
+                '</div>' +
+                (notes ? '<div class="quote-notes"><div class="quote-notes-title">Interne kommentarer</div>' + notes + '</div>' : '') +
+                '<div class="quote-comment-area">' +
+                    '<textarea class="quote-comment" maxlength="1000" placeholder="Intern kommentar (valgfritt ved godkjenning/avslag)"></textarea>' +
+                    '<div class="quote-actions">' +
+                        '<button class="btn secondary small-btn quote-comment-save" type="button">Lagre kommentar</button>' +
+                        (canDecide ? '<button class="btn success small-btn quote-decision" data-action="approve" type="button">Godkjenn</button>' : '') +
+                        (canDecide ? '<button class="btn danger small-btn quote-decision" data-action="reject" type="button">Avslå</button>' : '') +
+                        (q.checkout_url ? '<a class="btn secondary small-btn" href="' + esc(q.checkout_url) + '" target="_blank" rel="noopener">Betalingslenke</a>' : '') +
+                    '</div>' +
+                '</div>' +
+            '</article>';
+        }).join('');
+
+        Array.prototype.forEach.call(list.querySelectorAll('.quote-comment-save'), function (btn) {
+            btn.addEventListener('click', function () {
+                var card = btn.closest('.quote-card');
+                var quoteId = Number(card.getAttribute('data-quote-id'));
+                var textarea = card.querySelector('.quote-comment');
+                var comment = textarea.value.trim();
+
+                if (!comment) {
+                    showNotice('Skriv en kommentar først.', false);
+                    textarea.focus();
+                    return;
+                }
+
+                var buttons = card.querySelectorAll('button');
+                Array.prototype.forEach.call(buttons, function (button) { button.disabled = true; });
+
+                api('/quote/' + quoteId + '/comment', {
+                    method: 'POST',
+                    body: JSON.stringify({comment: comment})
+                }).then(function (data) {
+                    quotes = data.quotes || [];
+                    renderQuotes();
+                    showNotice(data.message || 'Kommentaren er lagret.', true);
+                }).catch(function (err) {
+                    Array.prototype.forEach.call(buttons, function (button) { button.disabled = false; });
+                    showNotice(err.message, false);
+                });
+            });
+        });
+
+        Array.prototype.forEach.call(list.querySelectorAll('.quote-decision'), function (btn) {
+            btn.addEventListener('click', function () {
+                var card = btn.closest('.quote-card');
+                var quoteId = Number(card.getAttribute('data-quote-id'));
+                var action = btn.getAttribute('data-action');
+                var comment = card.querySelector('.quote-comment').value.trim();
+
+                if (action === 'reject' && !window.confirm('Avslå denne forespørselen?')) {
+                    return;
+                }
+
+                var buttons = card.querySelectorAll('button');
+                Array.prototype.forEach.call(buttons, function (button) { button.disabled = true; });
+
+                api('/quote/' + quoteId + '/decision', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: action,
+                        comment: comment
+                    })
+                }).then(function (data) {
+                    quotes = data.quotes || [];
+                    renderQuotes();
+                    showNotice(data.message || 'Forespørselen er oppdatert.', true);
+                }).catch(function (err) {
+                    Array.prototype.forEach.call(buttons, function (button) { button.disabled = false; });
+                    showNotice(err.message, false);
+                });
+            });
+        });
+    }
+
+    document.getElementById('quoteFilter').addEventListener('change', renderQuotes);
+    document.getElementById('quoteRefresh').addEventListener('click', loadQuotes);
 
     function loadBlocks() {
         var list = document.getElementById('blockList');
@@ -655,6 +843,8 @@
         productTimer = window.setTimeout(function () {
             if (activeView === 'bookings') {
                 renderBookings();
+            } else if (activeView === 'quotes') {
+                renderQuotes();
             } else if (activeView === 'blocks') {
                 renderBlocks(blocks);
             } else if (activeView === 'equipment') {
@@ -674,6 +864,8 @@
 
         if (activeView === 'bookings') {
             renderBookings();
+        } else if (activeView === 'quotes') {
+            renderQuotes();
         } else if (activeView === 'blocks') {
             renderBlocks(blocks);
         } else if (activeView === 'equipment') {
