@@ -2,7 +2,7 @@
 /**
  * Plugin Name: T-Rent Admin App
  * Description: Mobilvennlig front-end app for sikker administrasjon av T-Rent WooCommerce uten wp-admin.
- * Version: 0.2.2
+ * Version: 0.3.0
  * Author: T-Rent
  * Requires Plugins: woocommerce
  * Requires PHP: 7.4
@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
 
 final class TRent_Admin_App
 {
-    const VERSION = '0.2.2';
+    const VERSION = '0.3.0';
     const QUERY_VAR = 'trent_app';
     const REST_NAMESPACE = 't-rent-app/v1';
 
@@ -67,10 +67,69 @@ final class TRent_Admin_App
         return self::can_manage();
     }
 
+    private static function pwa_app_path()
+    {
+        $path = wp_make_link_relative(home_url('/t-rent-app/'));
+        return $path !== '' ? $path : '/t-rent-app/';
+    }
+
+    private static function render_pwa_manifest()
+    {
+        nocache_headers();
+        header('Content-Type: application/manifest+json; charset=utf-8');
+        header('X-Robots-Tag: noindex, nofollow', true);
+
+        $app_path = self::pwa_app_path();
+        $icon_url = esc_url_raw(plugin_dir_url(__FILE__) . 'assets/app-icon.svg?ver=' . self::VERSION);
+
+        echo wp_json_encode([
+            'id' => $app_path,
+            'name' => 'T-RENT APP',
+            'short_name' => 'T-RENT',
+            'description' => 'Administrasjon av bookinger, utstyr og produkter for T-Rent.',
+            'start_url' => $app_path . '?source=pwa',
+            'scope' => $app_path,
+            'display' => 'standalone',
+            'orientation' => 'any',
+            'background_color' => '#f4f6f8',
+            'theme_color' => '#111827',
+            'icons' => [
+                [
+                    'src' => $icon_url,
+                    'sizes' => 'any',
+                    'type' => 'image/svg+xml',
+                    'purpose' => 'any maskable',
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    private static function render_pwa_service_worker()
+    {
+        nocache_headers();
+        header('Content-Type: application/javascript; charset=utf-8');
+        header('Service-Worker-Allowed: ' . self::pwa_app_path());
+        header('X-Robots-Tag: noindex, nofollow', true);
+
+        echo "self.addEventListener('install',function(){self.skipWaiting();});\n";
+        echo "self.addEventListener('activate',function(event){event.waitUntil(self.clients.claim());});\n";
+        echo "self.addEventListener('fetch',function(event){if(event.request.method!=='GET'){return;}event.respondWith(fetch(event.request));});\n";
+        exit;
+    }
+
     public static function render_app()
     {
         if ((int) get_query_var(self::QUERY_VAR) !== 1) {
             return;
+        }
+
+        $pwa_asset = isset($_GET['trent_pwa']) ? sanitize_key(wp_unslash($_GET['trent_pwa'])) : '';
+        if ($pwa_asset === 'manifest') {
+            self::render_pwa_manifest();
+        }
+        if ($pwa_asset === 'sw') {
+            self::render_pwa_service_worker();
         }
 
         if (!is_user_logged_in()) {
@@ -92,6 +151,8 @@ final class TRent_Admin_App
             'nonce' => wp_create_nonce('wp_rest'),
             'logoutUrl' => esc_url_raw(wp_logout_url(home_url('/t-rent-app/'))),
             'today' => wp_date('Y-m-d'),
+            'serviceWorkerUrl' => esc_url_raw(home_url('/t-rent-app/?trent_pwa=sw')),
+            'appScope' => self::pwa_app_path(),
         ];
 
         $user = wp_get_current_user();
@@ -103,7 +164,13 @@ final class TRent_Admin_App
     <meta charset="<?php bloginfo('charset'); ?>">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="robots" content="noindex,nofollow">
+    <meta name="theme-color" content="#111827">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="T-RENT APP">
     <title>T-Rent App</title>
+    <link rel="manifest" href="<?php echo esc_url(home_url('/t-rent-app/?trent_pwa=manifest')); ?>">
+    <link rel="icon" type="image/svg+xml" href="<?php echo esc_url($base . 'assets/app-icon.svg?ver=' . self::VERSION); ?>">
     <link rel="stylesheet" href="<?php echo esc_url($base . 'assets/app.css?ver=' . self::VERSION); ?>">
 </head>
 <body>
@@ -115,6 +182,7 @@ final class TRent_Admin_App
         </div>
         <div class="top-actions">
             <span class="sub"><?php echo esc_html($user->display_name); ?></span>
+            <button id="installApp" class="btn secondary" type="button" hidden>Installer app</button>
             <a class="btn secondary" href="<?php echo esc_url($config['logoutUrl']); ?>">Logg ut</a>
         </div>
     </header>
