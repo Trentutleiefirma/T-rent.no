@@ -1,49 +1,59 @@
 # T-Rent Admin App
 
-Mobilvennlig front-end for å administrere T-Rent WooCommerce uten å bruke wp-admin.
+Mobilvennlig front-end for å administrere T-Rent uten å bruke wp-admin.
 
-## Versjon 0.1.0
+## Versjon 0.2.0
 
-Første sikre MVP:
+Appen samler nå fire hovedområder på `/t-rent-app/`:
 
-- egen appadresse: `/t-rent-app/`
+### Bookinger
+- aktive, kommende og avsluttede RnB-bookinger
+- produkt og ordrenummer
+- **leie fra / til**
+- **dato og klokkeslett bookingen ble opprettet**
+- **kundenavn, telefon og e-post**
+- ordrestatus, beløp og betalingsmåte
+- telefonnummer er klikkbart på mobil
+- e-post er klikkbar
+
+### Blokker dato
+Samme RnB-logikk som T-Rent Datoblokkering i «Utleie system»:
+- velg utleieprodukt
+- velg fra- og til-dato
+- samme dato i begge felt = én hel blokkert dag
+- blokkering skrives til `rnb_availability` som `CUSTOM`
+- blokkering gjelder alle inventory-poster som er knyttet til produktet
+- aktive blokkeringer kan fjernes fra appen
+- WooCommerce/LiteSpeed produktcache tømmes etter endring
+
+### Utstyr
+Samme statusdata som T-Rent Utstyrskontroll:
+- Må kontrolleres
+- Service
+- Ikke klar
+- Ute på leie
+- Kontrollert og klar
+- sist kontrollert
+- sist service
+- siste / pågående leie
+- neste booking
+- notat kan lagres ved statusendring
+- WooCommerce-retur gjør utstyret kontrollpliktig etter samme logikk som eksisterende kontroll-plugin
+
+### Produkter
+- produktsøk
+- produktnavn
+- publiseringsstatus
+- depositum av/på
+- depositumbeløp
+- ordinær WooCommerce-grunnpris for ikke-RnB-produkter
+- RnB-leiepris er fortsatt låst til vi kobler den korrekt mot RnB inventory/prisdata
+
+## Sikkerhet
 - krever innlogget WordPress-bruker med WooCommerce-produktrettigheter
-- produktsøk og produktliste
-- endre produktnavn
-- endre publiseringsstatus
-- endre ordinær WooCommerce-grunnpris for ikke-RnB-produkter
-- se RnB-produktets grunnpris, men RnB-leiepris er låst
-- slå depositum av/på
-- endre depositumbeløp
-- mobilvennlig grensesnitt
-- REST-kall beskyttet med WordPress REST nonce
-- noindex/nofollow og ingen cache på app-siden
+- REST-kall bruker WordPress REST nonce
+- app-siden er noindex/nofollow og no-cache
+- ingen WooCommerce- eller RnB-kjernefiler endres av appen
 
-## Verifisert mot t-rent.no
-
-Før koden ble laget ble den aktive installasjonen kontrollert:
-
-- WooCommerce 11.1.2
-- WooCommerce Rental & Booking (RnB) 18.0.3
-- Deposits & Partial Payments for WooCommerce 1.2.13
-- RnB-produkttype: `redq_rental`
-- depositumfeltene på faktiske T-Rent-produkter:
-  - `_awcdp_deposit_enabled`
-  - `_awcdp_deposit_type`
-  - `_awcdp_deposits_deposit_amount`
-
-## Viktig
-
-RnB sin faktiske leiepris styres av egne inventory/prisdata. Derfor er prisredigering for `redq_rental` bevisst deaktivert i v0.1.0.
-
-Neste modul bør kartlegge og legge til:
-
-1. RnB leiepris 1 dag / flerdagerspriser
-2. kalender og manuell blokkering
-3. ordre og forespørsler
-4. utstyrskontroll/service
-5. PWA/installasjon på mobilens hjemskjerm
-
-## Installasjon
-
-Ikke kopier til live før branchen er gjennomgått. Når den er godkjent kopieres hele mappen `t-rent-admin-app` til `wp-content/plugins/` og pluginet aktiveres i WordPress. Aktivering oppretter rewrite-regelen for `/t-rent-app/`.
+## Installering
+Denne branchen skal gjennomgås før live-installasjon. Når den er godkjent kopieres hele mappen `t-rent-admin-app` til `wp-content/plugins/`, pluginet aktiveres og appen åpnes på `/t-rent-app/`.
