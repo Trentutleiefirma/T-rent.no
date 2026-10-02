@@ -2,7 +2,7 @@
 
 Mobilvennlig front-end for å administrere T-Rent uten å bruke wp-admin.
 
-## Versjon 0.4.0
+## Versjon 0.4.1
 
 Appen samler nå fem hovedområder på `/t-rent-app/`:
 
@@ -101,3 +101,7 @@ T-Rent Admin App kan installeres som en egen PWA på mobil:
 
 ## Endring i 0.4.0
 Forespørsler er lagt inn som egen appfane og er isolert fra RnB-kjernefilene. Appen bruker RnB sine registrerte forespørselsstatuser og e-postklasser, mens interne T-Rent-kommentarer lagres som egen post-meta på forespørselen.
+
+
+## PWA-fiks i 0.4.1
+Chrome-installasjon krever gyldige appikoner i både 192x192 og 512x512. Manifestet peker nå på begge størrelser av T-RENT-logoen og har `prefer_related_applications=false`.
