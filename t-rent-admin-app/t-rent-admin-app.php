@@ -80,7 +80,7 @@ final class TRent_Admin_App
         header('X-Robots-Tag: noindex, nofollow', true);
 
         $app_path = self::pwa_app_path();
-        $icon_url = esc_url_raw(plugin_dir_url(__FILE__) . 'assets/app-icon.svg?ver=' . self::VERSION);
+        $icon_url = esc_url_raw(plugin_dir_url(__FILE__) . 'assets/app-icon.jpg?ver=' . self::VERSION);
 
         echo wp_json_encode([
             'id' => $app_path,
@@ -96,9 +96,9 @@ final class TRent_Admin_App
             'icons' => [
                 [
                     'src' => $icon_url,
-                    'sizes' => 'any',
-                    'type' => 'image/svg+xml',
-                    'purpose' => 'any maskable',
+                    'sizes' => '192x192',
+                    'type' => 'image/jpeg',
+                    'purpose' => 'any',
                 ],
             ],
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -170,7 +170,8 @@ final class TRent_Admin_App
     <meta name="apple-mobile-web-app-title" content="T-RENT APP">
     <title>T-Rent App</title>
     <link rel="manifest" href="<?php echo esc_url(home_url('/t-rent-app/?trent_pwa=manifest')); ?>">
-    <link rel="icon" type="image/svg+xml" href="<?php echo esc_url($base . 'assets/app-icon.svg?ver=' . self::VERSION); ?>">
+    <link rel="icon" type="image/jpeg" href="<?php echo esc_url($base . 'assets/app-icon.jpg?ver=' . self::VERSION); ?>">
+    <link rel="apple-touch-icon" href="<?php echo esc_url($base . 'assets/app-icon.jpg?ver=' . self::VERSION); ?>">
     <link rel="stylesheet" href="<?php echo esc_url($base . 'assets/app.css?ver=' . self::VERSION); ?>">
 </head>
 <body>
