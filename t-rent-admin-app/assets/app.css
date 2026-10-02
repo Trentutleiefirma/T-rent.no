@@ -32,13 +32,17 @@ button,input,select{font:inherit}
 .list{overflow:hidden}
 .list-head{padding:14px 16px;border-bottom:1px solid var(--line);font-weight:800}
 .row-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.product{display:flex;gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line);cursor:pointer}
+.product{display:flex;width:100%;gap:12px;align-items:center;padding:12px 14px;border:0;border-bottom:1px solid var(--line);background:#fff;color:inherit;text-align:left;cursor:pointer}
 .product:last-child{border-bottom:0}.product:hover,.product.active{background:#f8fafc}
+.product:focus-visible{outline:3px solid rgba(37,99,235,.28);outline-offset:-3px}
 .thumb{width:58px;height:58px;border-radius:10px;background:#edf0f4;object-fit:cover;flex:0 0 auto}
-.product-main{min-width:0;flex:1}.product-name,.booking-product{font-weight:800}
-.meta{font-size:12px;color:var(--muted);margin-top:4px}
+.product-main{display:block;min-width:0;flex:1}.product-name,.booking-product{font-weight:800}.product-name{display:block}
+.meta{display:block;font-size:12px;color:var(--muted);margin-top:4px}
 .pill,.status-badge{font-size:11px;padding:5px 8px;border-radius:999px;background:#eef2f6;color:#334155;font-weight:800;white-space:nowrap}
 .editor{padding:16px;position:sticky;top:14px;align-self:start}
+.editor-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.editor-head .section-title{margin-top:4px}
+.mobile-product-back{display:none}
 .empty{padding:28px 16px;color:var(--muted);text-align:center}
 .field{margin-bottom:14px}.field label{display:block;font-size:13px;font-weight:750;margin-bottom:6px}
 .field input,.field select,.equipment-note{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:11px;background:#fff}
@@ -64,12 +68,12 @@ button,input,select{font:inherit}
 .eq-pending{background:#fff7ed;color:#9a3412}.eq-service{background:#f5f3ff;color:#6d28d9}.eq-maintenance{background:#fef2f2;color:#991b1b}.eq-out{background:#eff6ff;color:#1e40af}.eq-ready{background:#ecfdf5;color:#065f46}
 .next-booking{margin-top:7px}.equipment-actions{display:grid;grid-template-columns:2fr repeat(4,auto);gap:7px;margin-top:12px}
 @media(max-width:860px){.booking-grid,.equipment-info{grid-template-columns:1fr 1fr}.block-form{grid-template-columns:1fr 1fr}.button-field{grid-column:1/-1}.button-field .btn{width:100%}.status-grid{grid-template-columns:repeat(2,1fr)}.equipment-actions{grid-template-columns:1fr 1fr}.equipment-note{grid-column:1/-1}}
-@media(max-width:760px){.grid{grid-template-columns:1fr}.editor{position:static}.topbar{align-items:flex-start}.top-actions .sub{display:none}.row{grid-template-columns:1fr}.product{padding:11px}.shell{padding:12px 10px 28px}.brand{font-size:22px}.app-nav{grid-template-columns:1fr 1fr}.section-toolbar{align-items:flex-start;flex-direction:column}.toolbar-actions{width:100%}.small-select{flex:1}.booking-grid,.equipment-info{grid-template-columns:1fr}.block-form{grid-template-columns:1fr}.button-field{grid-column:auto}.equipment-actions{grid-template-columns:1fr 1fr}}
+@media(max-width:760px){.grid{grid-template-columns:1fr}.editor{position:static}.topbar{align-items:flex-start}.top-actions .sub{display:none}.row{grid-template-columns:1fr}.product{padding:11px}.shell{padding:12px 10px 28px}.brand{font-size:22px}.app-nav{grid-template-columns:1fr 1fr}.section-toolbar{align-items:flex-start;flex-direction:column}.toolbar-actions{width:100%}.small-select{flex:1}.booking-grid,.equipment-info{grid-template-columns:1fr}.block-form{grid-template-columns:1fr}.button-field{grid-column:auto}.equipment-actions{grid-template-columns:1fr 1fr}#view-products:not(.show-editor) .editor{display:none}#view-products.show-editor .list{display:none}#view-products.show-editor .editor{display:block}.mobile-product-back{display:inline-flex}}
 
 .global-search{padding:12px;margin-bottom:14px;display:flex;gap:8px;align-items:center}
 .global-search .search{min-width:0;flex:1}
 .product-toolbar{justify-content:space-between}
-@media(max-width:520px){.global-search{align-items:stretch}.global-search .btn{flex:0 0 auto}}
+@media(max-width:520px){.global-search{align-items:stretch}.global-search .btn{flex:0 0 auto}.product-toolbar{align-items:stretch;flex-direction:column}.product-toolbar .toolbar-actions{display:grid;grid-template-columns:1fr 1fr;width:100%}}
 
 .booking-state-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
 .booking-state-bar label{font-size:12px;font-weight:800;color:var(--muted)}
