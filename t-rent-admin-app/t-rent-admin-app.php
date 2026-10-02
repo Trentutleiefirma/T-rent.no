@@ -2,7 +2,7 @@
 /**
  * Plugin Name: T-Rent Admin App
  * Description: Mobilvennlig front-end app for sikker administrasjon av T-Rent WooCommerce uten wp-admin.
- * Version: 0.4.2
+ * Version: 0.4.3
  * Author: T-Rent
  * Requires Plugins: woocommerce
  * Requires PHP: 7.4
@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
 
 final class TRent_Admin_App
 {
-    const VERSION = '0.4.2';
+    const VERSION = '0.4.3';
     const QUERY_VAR = 'trent_app';
     const REST_NAMESPACE = 't-rent-app/v1';
 
