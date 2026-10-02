@@ -270,9 +270,7 @@
             if (filter === 'all') {
                 statusMatch = true;
             } else if (filter === 'open') {
-                statusMatch = q.status === 'quote-pending' ||
-                    q.status === 'quote-processing' ||
-                    q.status === 'quote-on-hold';
+                statusMatch = q.relevant === true;
             } else {
                 statusMatch = q.status === filter;
             }
