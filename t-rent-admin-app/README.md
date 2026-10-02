@@ -2,7 +2,7 @@
 
 Mobilvennlig front-end for å administrere T-Rent uten å bruke wp-admin.
 
-## Versjon 0.4.4
+## Versjon 0.5.0
 
 Appen samler nå fem hovedområder på `/t-rent-app/`:
 
@@ -35,7 +35,7 @@ Samme RnB-logikk som T-Rent Datoblokkering i «Utleie system»:
 - aktive blokkeringer kan fjernes fra appen
 - WooCommerce/LiteSpeed produktcache tømmes etter endring
 
-### Utstyr
+### Utstyrskontroll
 Samme statusdata som T-Rent Utstyrskontroll:
 - Må kontrolleres
 - Service
@@ -50,13 +50,14 @@ Samme statusdata som T-Rent Utstyrskontroll:
 - WooCommerce-retur gjør utstyret kontrollpliktig etter samme logikk som eksisterende kontroll-plugin
 
 ### Produkter
-- produktsøk
-- produktnavn
-- publiseringsstatus
-- depositum av/på
-- depositumbeløp
-- ordinær WooCommerce-grunnpris for ikke-RnB-produkter
-- RnB-leiepris er fortsatt låst til vi kobler den korrekt mot RnB inventory/prisdata
+- produktlisten er trykkbar også på mobil
+- på mobil åpnes produktredigering som egen visning med Tilbake-knapp
+- opprett nytt RnB-utleieprodukt eller enkelt WooCommerce-produkt direkte i appen
+- nye produkter opprettes som kladd som standard
+- produktnavn og publiseringsstatus kan endres
+- depositum av/på og depositumbeløp kan redigeres
+- ordinær WooCommerce-grunnpris kan settes for ikke-RnB-produkter
+- RnB-leiepris og inventory/prisdata endres foreløpig ikke automatisk ved oppretting
 
 ## Sikkerhet
 - krever innlogget WordPress-bruker med WooCommerce-produktrettigheter
@@ -115,3 +116,11 @@ Standardfilteret «Aktuelle forespørsler» viser bare åpne forespørsler som f
 - helt nye forespørsler uten lesbare leiedatoer beholdes i opptil 7 dager som sikkerhetsnett
 
 Gamle eller allerede konverterte forespørsler kan fortsatt finnes under «Alle», men vises ikke lenger i standardlisten.
+
+
+## Endring i 0.5.0
+- fanen «Utstyr» heter nå «Utstyrskontroll»
+- produktkort er ekte trykkbare knapper
+- mobilvisningen skjuler den lange produktlisten når et produkt åpnes, slik at redigeringen vises med en gang
+- «Nytt produkt» oppretter WooCommerce-produkt via appens sikrede REST-endepunkt
+- produkttype kan være RnB utleie eller enkelt produkt
