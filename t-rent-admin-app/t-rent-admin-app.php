@@ -2,7 +2,7 @@
 /**
  * Plugin Name: T-Rent Admin App
  * Description: Mobilvennlig front-end app for sikker administrasjon av T-Rent WooCommerce uten wp-admin.
- * Version: 0.4.4
+ * Version: 0.5.0
  * Author: T-Rent
  * Requires Plugins: woocommerce
  * Requires PHP: 7.4
@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
 
 final class TRent_Admin_App
 {
-    const VERSION = '0.4.4';
+    const VERSION = '0.5.0';
     const QUERY_VAR = 'trent_app';
     const REST_NAMESPACE = 't-rent-app/v1';
 
@@ -202,7 +202,7 @@ final class TRent_Admin_App
         <button class="nav-btn active" data-view="bookings" type="button">Bookinger</button>
         <button class="nav-btn" data-view="quotes" type="button">Forespørsler</button>
         <button class="nav-btn" data-view="blocks" type="button">Blokker dato</button>
-        <button class="nav-btn" data-view="equipment" type="button">Utstyr</button>
+        <button class="nav-btn" data-view="equipment" type="button">Utstyrskontroll</button>
         <button class="nav-btn" data-view="products" type="button">Produkter</button>
     </nav>
 
@@ -299,8 +299,11 @@ final class TRent_Admin_App
 
     <section id="view-products" class="view">
         <div class="card toolbar product-toolbar">
-            <div class="hint">Bruk søkefeltet øverst for å søke i produkter.</div>
-            <button id="refresh" class="btn secondary" type="button">Oppdater</button>
+            <div class="hint">Trykk på et produkt for å redigere, eller opprett et nytt produkt.</div>
+            <div class="toolbar-actions">
+                <button id="newProduct" class="btn" type="button">Nytt produkt</button>
+                <button id="refresh" class="btn secondary" type="button">Oppdater</button>
+            </div>
         </div>
 
         <div class="grid">
@@ -327,15 +330,22 @@ final class TRent_Admin_App
     public static function register_rest_routes()
     {
         register_rest_route(self::REST_NAMESPACE, '/products', [
-            'methods' => WP_REST_Server::READABLE,
-            'callback' => [__CLASS__, 'rest_products'],
-            'permission_callback' => [__CLASS__, 'rest_permission'],
-            'args' => [
-                'search' => [
-                    'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field',
-                    'default' => '',
+            [
+                'methods' => WP_REST_Server::READABLE,
+                'callback' => [__CLASS__, 'rest_products'],
+                'permission_callback' => [__CLASS__, 'rest_permission'],
+                'args' => [
+                    'search' => [
+                        'type' => 'string',
+                        'sanitize_callback' => 'sanitize_text_field',
+                        'default' => '',
+                    ],
                 ],
+            ],
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [__CLASS__, 'rest_create_product'],
+                'permission_callback' => [__CLASS__, 'rest_permission'],
             ],
         ]);
 
@@ -379,6 +389,97 @@ final class TRent_Admin_App
         }
 
         return rest_ensure_response(['products' => $products]);
+    }
+
+    public static function rest_create_product(WP_REST_Request $request)
+    {
+        if (!function_exists('wc_get_product')) {
+            return new WP_Error('trent_wc_missing', 'WooCommerce er ikke tilgjengelig.', ['status' => 500]);
+        }
+
+        $data = $request->get_json_params();
+        $data = is_array($data) ? $data : [];
+
+        $name = isset($data['name']) ? sanitize_text_field($data['name']) : '';
+        if ($name === '') {
+            return new WP_Error('trent_name_required', 'Produktnavn kan ikke være tomt.', ['status' => 400]);
+        }
+
+        $type = isset($data['type']) ? sanitize_key($data['type']) : 'redq_rental';
+        if (!in_array($type, ['redq_rental', 'simple'], true)) {
+            return new WP_Error('trent_invalid_product_type', 'Ugyldig produkttype.', ['status' => 400]);
+        }
+
+        $status = isset($data['status']) ? sanitize_key($data['status']) : 'draft';
+        if (!in_array($status, ['publish', 'draft', 'private'], true)) {
+            return new WP_Error('trent_invalid_status', 'Ugyldig produktstatus.', ['status' => 400]);
+        }
+
+        if ($status === 'publish' && !current_user_can('publish_products')) {
+            return new WP_Error('trent_publish_forbidden', 'Du kan ikke publisere produkter.', ['status' => 403]);
+        }
+
+        $regular_price = null;
+        if ($type === 'simple' && array_key_exists('regular_price', $data)) {
+            $raw_price = trim((string) $data['regular_price']);
+            if ($raw_price === '') {
+                $regular_price = '';
+            } else {
+                $regular_price = wc_format_decimal($raw_price);
+                if ($regular_price === '' || (float) $regular_price < 0) {
+                    return new WP_Error('trent_invalid_price', 'Ugyldig grunnpris.', ['status' => 400]);
+                }
+            }
+        }
+
+        $product_id = wp_insert_post([
+            'post_type' => 'product',
+            'post_status' => $status,
+            'post_title' => $name,
+            'post_content' => '',
+            'post_excerpt' => '',
+        ], true);
+
+        if (is_wp_error($product_id)) {
+            return new WP_Error('trent_product_create_failed', 'Kunne ikke opprette produktet.', ['status' => 500]);
+        }
+
+        $term_result = wp_set_object_terms($product_id, $type, 'product_type', false);
+        if (is_wp_error($term_result)) {
+            wp_delete_post($product_id, true);
+            return new WP_Error('trent_product_type_failed', 'Kunne ikke sette produkttype.', ['status' => 500]);
+        }
+
+        clean_post_cache($product_id);
+        $product = wc_get_product($product_id);
+
+        if (!$product) {
+            wp_delete_post($product_id, true);
+            return new WP_Error('trent_product_create_failed', 'WooCommerce kunne ikke laste det nye produktet.', ['status' => 500]);
+        }
+
+        try {
+            $product->set_name($name);
+            $product->set_status($status);
+
+            if ($type === 'simple' && $regular_price !== null) {
+                $product->set_regular_price($regular_price);
+                $product->set_price($regular_price);
+            }
+
+            $product->save();
+        } catch (Throwable $e) {
+            wp_delete_post($product_id, true);
+            return new WP_Error('trent_product_create_failed', 'Kunne ikke lagre det nye produktet.', ['status' => 500]);
+        }
+
+        clean_post_cache($product_id);
+        if (function_exists('wc_delete_product_transients')) {
+            wc_delete_product_transients($product_id);
+        }
+
+        $fresh = wc_get_product($product_id);
+        return rest_ensure_response(self::format_product($fresh ?: $product));
     }
 
     public static function rest_product(WP_REST_Request $request)
