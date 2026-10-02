@@ -2,7 +2,7 @@
 
 Mobilvennlig front-end for å administrere T-Rent uten å bruke wp-admin.
 
-## Versjon 0.4.1
+## Versjon 0.4.4
 
 Appen samler nå fem hovedområder på `/t-rent-app/`:
 
@@ -105,3 +105,13 @@ Forespørsler er lagt inn som egen appfane og er isolert fra RnB-kjernefilene. A
 
 ## PWA-fiks i 0.4.2
 Appikonene hentes nå direkte fra WordPress sitt konfigurerte Site Icon i 192x192, 180x180 og 512x512. De tidligere binære JPG-filene i pluginen er fjernet fordi de var korrupte. Manifestet har fortsatt `prefer_related_applications=false`.
+
+
+## Relevante forespørsler i 0.4.4
+Standardfilteret «Aktuelle forespørsler» viser bare åpne forespørsler som fortsatt trenger handling:
+- status er venter på svar, behandles eller på vent
+- det finnes ikke allerede en RnB/WooCommerce-ordre for forespørselen
+- leieperioden er ikke utløpt
+- helt nye forespørsler uten lesbare leiedatoer beholdes i opptil 7 dager som sikkerhetsnett
+
+Gamle eller allerede konverterte forespørsler kan fortsatt finnes under «Alle», men vises ikke lenger i standardlisten.
