@@ -2,7 +2,7 @@
 
 Mobilvennlig front-end for å administrere T-Rent uten å bruke wp-admin.
 
-## Versjon 0.5.0
+## Versjon 0.6.0
 
 Appen samler nå fem hovedområder på `/t-rent-app/`:
 
@@ -124,3 +124,19 @@ Gamle eller allerede konverterte forespørsler kan fortsatt finnes under «Alle�
 - mobilvisningen skjuler den lange produktlisten når et produkt åpnes, slik at redigeringen vises med en gang
 - «Nytt produkt» oppretter WooCommerce-produkt via appens sikrede REST-endepunkt
 - produkttype kan være RnB utleie eller enkelt produkt
+
+
+## Endring i 0.6.0
+Produktdelen er bygget om slik at en komplett WooCommerce/RnB-annonse kan lages fra mobilen:
+- produktnavn, status, SKU og URL-navn
+- kort beskrivelse og full annonsetekst
+- hovedbilde og produktgalleri med bildeopplasting
+- produktkategorier og etiketter
+- RnB-utstyr/lager opprettes automatisk eller kobles til eksisterende inventory
+- grunnpris per dag og prisnivåer etter antall leiedager
+- RnB forespørsel/direkte booking
+- depositum av/på, type og beløp
+- ordinær pris og lagerstatus for enkle WooCommerce-produkter
+- lenke til både ferdig annonse og full WooCommerce-editor for eksisterende produkter
+
+RnB-prisnivåer som angis som dagpris lagres som RnBs egne prosentbaserte leierabatter mot grunnprisen. Koden ligger i app-pluginen og endrer ikke RnB-kjernefiler.
