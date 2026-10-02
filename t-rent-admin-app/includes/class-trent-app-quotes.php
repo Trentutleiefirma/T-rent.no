@@ -194,6 +194,10 @@ final class TRent_Admin_App_Quotes
         $customer = self::customer_details($quote_id, $post, $form['forms']);
         $quote_price = (string) get_post_meta($quote_id, '_quote_price', true);
         $created_ts = $post ? (int) get_post_time('U', true, $post) : 0;
+        $pickup_ts = self::quote_datetime_timestamp($pickup_date, $pickup_time, '08:00');
+        $return_ts = self::quote_datetime_timestamp($return_date, $return_time, '20:00');
+        $order_id = absint(get_post_meta($quote_id, '_rnb_rfq_order_id', true));
+        $relevant = self::is_relevant_quote($status, $order_id, $pickup_ts, $return_ts, $created_ts);
 
         $notes = get_post_meta($quote_id, self::NOTES_META, true);
         $notes = is_array($notes) ? array_values($notes) : [];
@@ -208,6 +212,10 @@ final class TRent_Admin_App_Quotes
             'created_ts' => $created_ts,
             'pickup' => self::format_quote_datetime($pickup_date, $pickup_time, '08:00'),
             'return' => self::format_quote_datetime($return_date, $return_time, '20:00'),
+            'pickup_ts' => $pickup_ts,
+            'return_ts' => $return_ts,
+            'order_id' => $order_id,
+            'relevant' => $relevant,
             'customer_name' => $customer['name'],
             'phone' => $customer['phone'],
             'email' => $customer['email'],
@@ -416,13 +424,40 @@ final class TRent_Admin_App_Quotes
         }
     }
 
-    private static function format_quote_datetime($date, $time, $default_time)
+    private static function is_relevant_quote($status, $order_id, $pickup_ts, $return_ts, $created_ts)
+    {
+        if (!in_array($status, ['quote-pending', 'quote-processing', 'quote-on-hold'], true)) {
+            return false;
+        }
+
+        if ($order_id > 0) {
+            return false;
+        }
+
+        $now = time();
+
+        if ($return_ts > 0) {
+            return $return_ts >= $now;
+        }
+
+        if ($pickup_ts > 0) {
+            $timezone = wp_timezone();
+            $today = new DateTimeImmutable('today', $timezone);
+            return $pickup_ts >= $today->getTimestamp();
+        }
+
+        // Dersom en helt ny forespørsel mangler lesbare leiedatoer, behold den synlig
+        // i én uke slik at en gyldig ny forespørsel ikke forsvinner ved dataproblemer.
+        return $created_ts > 0 && $created_ts >= ($now - (7 * DAY_IN_SECONDS));
+    }
+
+    private static function quote_datetime_timestamp($date, $time, $default_time)
     {
         $date = is_scalar($date) ? trim((string) $date) : '';
         $time = is_scalar($time) ? trim((string) $time) : '';
 
         if ($date === '') {
-            return '';
+            return 0;
         }
 
         if (strpos($date, '|') !== false) {
@@ -455,8 +490,41 @@ final class TRent_Admin_App_Quotes
         foreach ($formats as $format) {
             $parsed = DateTimeImmutable::createFromFormat('!' . $format, $value, $timezone);
             if ($parsed instanceof DateTimeImmutable) {
-                return wp_date('d.m.Y H:i', $parsed->getTimestamp(), $timezone);
+                return $parsed->getTimestamp();
             }
+        }
+
+        try {
+            return (new DateTimeImmutable($value, $timezone))->getTimestamp();
+        } catch (Exception $e) {
+            return 0;
+        }
+    }
+
+    private static function format_quote_datetime($date, $time, $default_time)
+    {
+        $date = is_scalar($date) ? trim((string) $date) : '';
+        $time = is_scalar($time) ? trim((string) $time) : '';
+
+        if ($date === '') {
+            return '';
+        }
+
+        if (strpos($date, '|') !== false) {
+            list($date_part, $pipe_time) = array_pad(explode('|', $date, 2), 2, '');
+            $date = trim($date_part);
+            if ($time === '' && trim($pipe_time) !== '') {
+                $time = trim($pipe_time);
+            }
+        }
+
+        if ($time === '') {
+            $time = $default_time;
+        }
+
+        $timestamp = self::quote_datetime_timestamp($date, $time, $default_time);
+        if ($timestamp > 0) {
+            return wp_date('d.m.Y H:i', $timestamp, wp_timezone());
         }
 
         return trim($date . ' ' . $time);
