@@ -103,5 +103,5 @@ T-Rent Admin App kan installeres som en egen PWA på mobil:
 Forespørsler er lagt inn som egen appfane og er isolert fra RnB-kjernefilene. Appen bruker RnB sine registrerte forespørselsstatuser og e-postklasser, mens interne T-Rent-kommentarer lagres som egen post-meta på forespørselen.
 
 
-## PWA-fiks i 0.4.1
-Chrome-installasjon krever gyldige appikoner i både 192x192 og 512x512. Manifestet peker nå på begge størrelser av T-RENT-logoen og har `prefer_related_applications=false`.
+## PWA-fiks i 0.4.2
+Appikonene hentes nå direkte fra WordPress sitt konfigurerte Site Icon i 192x192, 180x180 og 512x512. De tidligere binære JPG-filene i pluginen er fjernet fordi de var korrupte. Manifestet har fortsatt `prefer_related_applications=false`.
