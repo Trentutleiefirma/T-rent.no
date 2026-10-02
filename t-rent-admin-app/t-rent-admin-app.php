@@ -2,7 +2,7 @@
 /**
  * Plugin Name: T-Rent Admin App
  * Description: Mobilvennlig front-end app for sikker administrasjon av T-Rent WooCommerce uten wp-admin.
- * Version: 0.4.0
+ * Version: 0.4.1
  * Author: T-Rent
  * Requires Plugins: woocommerce
  * Requires PHP: 7.4
@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
 
 final class TRent_Admin_App
 {
-    const VERSION = '0.4.0';
+    const VERSION = '0.4.1';
     const QUERY_VAR = 'trent_app';
     const REST_NAMESPACE = 't-rent-app/v1';
 
@@ -80,7 +80,8 @@ final class TRent_Admin_App
         header('X-Robots-Tag: noindex, nofollow', true);
 
         $app_path = self::pwa_app_path();
-        $icon_url = esc_url_raw(plugin_dir_url(__FILE__) . 'assets/app-icon.jpg?ver=' . self::VERSION);
+        $icon_192_url = esc_url_raw(plugin_dir_url(__FILE__) . 'assets/app-icon-192.jpg?ver=' . self::VERSION);
+        $icon_512_url = esc_url_raw(plugin_dir_url(__FILE__) . 'assets/app-icon.jpg?ver=' . self::VERSION);
 
         echo wp_json_encode([
             'id' => $app_path,
@@ -93,10 +94,17 @@ final class TRent_Admin_App
             'orientation' => 'any',
             'background_color' => '#f4f6f8',
             'theme_color' => '#111827',
+            'prefer_related_applications' => false,
             'icons' => [
                 [
-                    'src' => $icon_url,
+                    'src' => $icon_192_url,
                     'sizes' => '192x192',
+                    'type' => 'image/jpeg',
+                    'purpose' => 'any',
+                ],
+                [
+                    'src' => $icon_512_url,
+                    'sizes' => '512x512',
                     'type' => 'image/jpeg',
                     'purpose' => 'any',
                 ],
@@ -170,8 +178,8 @@ final class TRent_Admin_App
     <meta name="apple-mobile-web-app-title" content="T-RENT APP">
     <title>T-Rent App</title>
     <link rel="manifest" href="<?php echo esc_url(home_url('/t-rent-app/?trent_pwa=manifest')); ?>">
-    <link rel="icon" type="image/jpeg" href="<?php echo esc_url($base . 'assets/app-icon.jpg?ver=' . self::VERSION); ?>">
-    <link rel="apple-touch-icon" href="<?php echo esc_url($base . 'assets/app-icon.jpg?ver=' . self::VERSION); ?>">
+    <link rel="icon" type="image/jpeg" href="<?php echo esc_url($base . 'assets/app-icon-192.jpg?ver=' . self::VERSION); ?>">
+    <link rel="apple-touch-icon" href="<?php echo esc_url($base . 'assets/app-icon-192.jpg?ver=' . self::VERSION); ?>">
     <link rel="stylesheet" href="<?php echo esc_url($base . 'assets/app.css?ver=' . self::VERSION); ?>">
 </head>
 <body>
