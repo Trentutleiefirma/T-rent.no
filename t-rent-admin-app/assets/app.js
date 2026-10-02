@@ -722,14 +722,14 @@
                 : '<div class="thumb"></div>';
             var price = p.regular_price !== '' ? ' · ' + esc(p.regular_price) + ' kr' : '';
 
-            return '<div class="product ' + (p.id === selectedId ? 'active' : '') + '" data-id="' + p.id + '">' +
+            return '<button type="button" class="product ' + (p.id === selectedId ? 'active' : '') + '" data-id="' + p.id + '">' +
                 image +
-                '<div class="product-main">' +
-                    '<div class="product-name">' + esc(p.name) + '</div>' +
-                    '<div class="meta">#' + p.id + ' · ' + esc(p.type_label) + price + '</div>' +
-                '</div>' +
+                '<span class="product-main">' +
+                    '<span class="product-name">' + esc(p.name) + '</span>' +
+                    '<span class="meta">#' + p.id + ' · ' + esc(p.type_label) + price + '</span>' +
+                '</span>' +
                 '<span class="pill">' + esc(p.status_label) + '</span>' +
-            '</div>';
+            '</button>';
         }).join('');
 
         Array.prototype.forEach.call(listEl.querySelectorAll('.product'), function (el) {
@@ -739,9 +739,32 @@
         });
     }
 
+    function openProductEditor() {
+        var view = document.getElementById('view-products');
+        if (view) {
+            view.classList.add('show-editor');
+        }
+    }
+
+    function closeProductEditor() {
+        var view = document.getElementById('view-products');
+        if (view) {
+            view.classList.remove('show-editor');
+        }
+
+        selectedId = null;
+        renderProductList();
+
+        var editorEl = document.getElementById('editor');
+        if (editorEl) {
+            editorEl.innerHTML = '<div class="empty">Velg et produkt for å redigere.</div>';
+        }
+    }
+
     function selectProduct(id, fetchFresh) {
         var editorEl = document.getElementById('editor');
         selectedId = id;
+        openProductEditor();
         renderProductList();
         editorEl.innerHTML = '<div class="empty">Laster produkt ...</div>';
 
@@ -760,6 +783,107 @@
         });
     }
 
+    function renderCreateProduct() {
+        var editorEl = document.getElementById('editor');
+        selectedId = null;
+        renderProductList();
+        openProductEditor();
+
+        editorEl.innerHTML =
+            '<div class="editor-head">' +
+                '<div class="section-title">Nytt produkt</div>' +
+                '<button id="backToProducts" class="btn secondary small-btn mobile-product-back" type="button">Tilbake</button>' +
+            '</div>' +
+            '<form id="newProductForm">' +
+                '<div class="field">' +
+                    '<label for="newProductName">Navn</label>' +
+                    '<input id="newProductName" required autocomplete="off" placeholder="Produktnavn">' +
+                '</div>' +
+                '<div class="row">' +
+                    '<div class="field">' +
+                        '<label for="newProductType">Produkttype</label>' +
+                        '<select id="newProductType">' +
+                            '<option value="redq_rental" selected>RnB utleie</option>' +
+                            '<option value="simple">Enkelt produkt</option>' +
+                        '</select>' +
+                    '</div>' +
+                    '<div class="field">' +
+                        '<label for="newProductStatus">Status</label>' +
+                        '<select id="newProductStatus">' +
+                            '<option value="draft" selected>Kladd</option>' +
+                            '<option value="publish">Publisert</option>' +
+                            '<option value="private">Privat</option>' +
+                        '</select>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="field" id="newProductPriceField">' +
+                    '<label for="newProductPrice">WooCommerce grunnpris</label>' +
+                    '<input id="newProductPrice" inputmode="decimal" placeholder="f.eks. 499">' +
+                '</div>' +
+                '<div id="newProductHint" class="hint product-price-hint"></div>' +
+                '<div class="savebar">' +
+                    '<button id="createProductBtn" class="btn" type="submit">Opprett produkt</button>' +
+                '</div>' +
+            '</form>';
+
+        var typeEl = document.getElementById('newProductType');
+        var priceEl = document.getElementById('newProductPrice');
+        var hintEl = document.getElementById('newProductHint');
+
+        function syncNewProductType() {
+            var rental = typeEl.value === 'redq_rental';
+            priceEl.disabled = rental;
+            priceEl.value = rental ? '' : priceEl.value;
+            hintEl.textContent = rental
+                ? 'RnB-produktet opprettes i WooCommerce. Pris, lager/utstyr og øvrige RnB-innstillinger kan settes etterpå.'
+                : 'Grunnprisen kan settes nå og endres senere.';
+        }
+
+        typeEl.addEventListener('change', syncNewProductType);
+        syncNewProductType();
+
+        document.getElementById('backToProducts').addEventListener('click', closeProductEditor);
+
+        document.getElementById('newProductForm').addEventListener('submit', function (event) {
+            event.preventDefault();
+
+            var createBtn = document.getElementById('createProductBtn');
+            createBtn.disabled = true;
+            createBtn.textContent = 'Oppretter ...';
+
+            api('/products', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: document.getElementById('newProductName').value.trim(),
+                    type: typeEl.value,
+                    status: document.getElementById('newProductStatus').value,
+                    regular_price: priceEl.disabled ? null : priceEl.value.trim()
+                })
+            }).then(function (created) {
+                products.push(created);
+                products.sort(function (a, b) {
+                    return String(a.name || '').localeCompare(String(b.name || ''), 'nb');
+                });
+                selectedId = created.id;
+                renderProductList();
+                renderEditor(created);
+                openProductEditor();
+                showNotice('Produktet er opprettet.', true);
+            }).catch(function (err) {
+                showNotice(err.message, false);
+                createBtn.disabled = false;
+                createBtn.textContent = 'Opprett produkt';
+            });
+        });
+
+        window.setTimeout(function () {
+            var nameEl = document.getElementById('newProductName');
+            if (nameEl) {
+                nameEl.focus();
+            }
+        }, 0);
+    }
+
     function renderEditor(p) {
         var editorEl = document.getElementById('editor');
         var rental = p.type === 'redq_rental';
@@ -768,7 +892,10 @@
             : 'Dette er WooCommerce-produktets ordinære grunnpris.';
 
         editorEl.innerHTML =
-            '<div class="section-title">Rediger produkt #' + p.id + '</div>' +
+            '<div class="editor-head">' +
+                '<div class="section-title">Rediger produkt #' + p.id + '</div>' +
+                '<button id="backToProducts" class="btn secondary small-btn mobile-product-back" type="button">Tilbake</button>' +
+            '</div>' +
             '<form id="productForm">' +
                 '<div class="field">' +
                     '<label for="name">Navn</label>' +
@@ -801,6 +928,8 @@
                     (p.permalink ? '<a class="btn secondary" href="' + esc(p.permalink) + '" target="_blank" rel="noopener">Se produkt</a>' : '') +
                 '</div>' +
             '</form>';
+
+        document.getElementById('backToProducts').addEventListener('click', closeProductEditor);
 
         document.getElementById('productForm').addEventListener('submit', function (event) {
             event.preventDefault();
@@ -875,6 +1004,7 @@
         globalSearchEl.focus();
     });
 
+    document.getElementById('newProduct').addEventListener('click', renderCreateProduct);
     document.getElementById('refresh').addEventListener('click', loadProducts);
 
     if ('serviceWorker' in navigator && cfg.serviceWorkerUrl) {
