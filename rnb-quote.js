@@ -39,8 +39,11 @@
   $(window).on('load', function(){
     $('.rfq-to-cart').submit();
   });
+  var quoteRequestPending = false;
   $('.rfq-to-cart').on('submit', function(e){
     e.preventDefault();
+    if (quoteRequestPending) return;
+    quoteRequestPending = true;
     var searchFormData = $(this).serializeArray(),
       dataObj = {};
     $(searchFormData).each(function (i, field) {
@@ -73,8 +76,16 @@
          
         },
       })
-    ).then(function (data, textStatus, jqXHR) {
-      window.location.href = redirect_url;
+    ).then(function (data) {
+      if (data && data.success) {
+        window.location.href = redirect_url;
+      } else {
+        quoteRequestPending = false;
+        window.alert((data && data.message) || 'Kunne ikke legge tilbudet i handlekurven.');
+      }
+    }, function () {
+      quoteRequestPending = false;
+      window.alert('Kunne ikke legge tilbudet i handlekurven. Prøv igjen.');
     });
    }
   });
