@@ -220,27 +220,57 @@ class Ajax extends Booking_Manager
         $posted_data = $this->rearrange_form_data($posted_data);
         $ajax_data = $this->prepare_form_data($posted_data);
 
-        $cost            = floatval(get_post_meta($quote_id, '_quote_price', true));
+        /*
+         * Always use the freshly calculated rental price when an accepted quote
+         * is moved to the cart. The saved _quote_price may contain an older
+         * two-day calculation made before the original pickup/dropoff times
+         * were restored. Reusing it makes a 19:00-21:00 evening-before pickup
+         * cost an extra rental day even though calculate_rental_duration() has
+         * correctly normalized the booking to one paid day.
+         */
         $cost_details = $ajax_data['rental_days_and_costs']['price_breakdown'];
-        $deposit_total = $cost_details['deposit_total'];
-        $cost = $cost - $deposit_total;
+        $cost = isset($cost_details['deposit_free_total'])
+            ? floatval($cost_details['deposit_free_total'])
+            : 0.0;
 
-        $instance_payment = $this->handle_instant_payment(['deposit_free_total' => $cost], $display);
-        $due_payment = $cost - $instance_payment;
+        $instance_payment = $this->handle_instant_payment(
+            ['deposit_free_total' => $cost],
+            $display
+        );
+        $due_payment = max(0, $cost - $instance_payment);
 
-        $quantity =  intval($ajax_data['quantity']);
+        $quantity = max(1, intval($ajax_data['quantity']));
         $ajax_data['rental_days_and_costs']['cost'] = $instance_payment;
-        // $ajax_data['rental_days_and_costs']['instant_pay'] = $instance_payment;
-        $ajax_data['rental_days_and_costs']['due_payment'] = floatval($due_payment) * $quantity;
-
+        $ajax_data['rental_days_and_costs']['instant_pay'] = $instance_payment * $quantity;
+        $ajax_data['rental_days_and_costs']['due_payment'] = $due_payment * $quantity;
         $ajax_data['posted_data'] = $posted_data;
         $cart_data['rental_data'] = $ajax_data;
 
-        if (WC()->cart->add_to_cart($product_id, $quantity = 1, $variation_id = '', $variation = '', $cart_data)) {
-            echo json_encode([
-                'success' => true,
-            ]);
+        /*
+         * Opening or refreshing an accepted-quote link must be idempotent.
+         * Remove every older cart row for this quote before adding the newly
+         * normalized row. This also repairs carts that already contain the
+         * same quote several times.
+         */
+        if (WC()->cart) {
+            foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
+                $cart_quote_id = isset($cart_item['rental_data']['quote_id'])
+                    ? absint($cart_item['rental_data']['quote_id'])
+                    : 0;
+
+                if ($cart_quote_id === absint($quote_id)) {
+                    WC()->cart->remove_cart_item($cart_item_key);
+                }
+            }
         }
+
+        $cart_item_key = WC()->cart
+            ? WC()->cart->add_to_cart($product_id, 1, 0, [], $cart_data)
+            : false;
+
+        wp_send_json([
+            'success' => !empty($cart_item_key),
+        ]);
 
         wp_die();
     }
