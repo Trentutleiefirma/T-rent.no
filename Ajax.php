@@ -220,78 +220,27 @@ class Ajax extends Booking_Manager
         $posted_data = $this->rearrange_form_data($posted_data);
         $ajax_data = $this->prepare_form_data($posted_data);
 
-        /*
-         * The accepted quote can contain a stale two-day price from before the
-         * original pickup/dropoff times were restored. Use the new calculation
-         * only for that exact failure pattern: the booking is now one paid day
-         * and the saved rental amount is exactly twice the current amount.
-         *
-         * Other saved quote amounts are preserved because an administrator may
-         * have entered a custom agreed price.
-         */
+        $cost            = floatval(get_post_meta($quote_id, '_quote_price', true));
         $cost_details = $ajax_data['rental_days_and_costs']['price_breakdown'];
-        $calculated_cost = isset($cost_details['deposit_free_total'])
-            ? floatval($cost_details['deposit_free_total'])
-            : 0.0;
-        $deposit_total = isset($cost_details['deposit_total'])
-            ? floatval($cost_details['deposit_total'])
-            : 0.0;
-        $stored_quote_total = floatval(get_post_meta($quote_id, '_quote_price', true));
-        $stored_rental_cost = max(0, $stored_quote_total - $deposit_total);
-        $calculated_days = isset($ajax_data['rental_days_and_costs']['days'])
-            ? intval($ajax_data['rental_days_and_costs']['days'])
-            : 0;
+        $deposit_total = $cost_details['deposit_total'];
+        $cost = $cost - $deposit_total;
 
-        $has_stale_two_day_price = (
-            $calculated_days === 1 &&
-            $calculated_cost > 0 &&
-            abs($stored_rental_cost - ($calculated_cost * 2)) < 0.01
-        );
+        $instance_payment = $this->handle_instant_payment(['deposit_free_total' => $cost], $display);
+        $due_payment = $cost - $instance_payment;
 
-        if ($stored_quote_total > 0 && !$has_stale_two_day_price) {
-            $cost = $stored_rental_cost;
-        } else {
-            $cost = $calculated_cost;
-        }
-
-        $instance_payment = $this->handle_instant_payment(
-            ['deposit_free_total' => $cost],
-            $display
-        );
-        $due_payment = max(0, $cost - $instance_payment);
-
-        $quantity = max(1, intval($ajax_data['quantity']));
+        $quantity =  intval($ajax_data['quantity']);
         $ajax_data['rental_days_and_costs']['cost'] = $instance_payment;
-        $ajax_data['rental_days_and_costs']['instant_pay'] = $instance_payment * $quantity;
-        $ajax_data['rental_days_and_costs']['due_payment'] = $due_payment * $quantity;
+        // $ajax_data['rental_days_and_costs']['instant_pay'] = $instance_payment;
+        $ajax_data['rental_days_and_costs']['due_payment'] = floatval($due_payment) * $quantity;
+
         $ajax_data['posted_data'] = $posted_data;
         $cart_data['rental_data'] = $ajax_data;
 
-        /*
-         * Opening or refreshing an accepted-quote link must be idempotent.
-         * Remove every older cart row for this quote before adding the newly
-         * normalized row. This also repairs carts that already contain the
-         * same quote several times.
-         */
-        if (WC()->cart) {
-            foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
-                $cart_quote_id = isset($cart_item['rental_data']['quote_id'])
-                    ? absint($cart_item['rental_data']['quote_id'])
-                    : 0;
-
-                if ($cart_quote_id === absint($quote_id)) {
-                    WC()->cart->remove_cart_item($cart_item_key);
-                }
-            }
+        if (WC()->cart->add_to_cart($product_id, $quantity = 1, $variation_id = '', $variation = '', $cart_data)) {
+            echo json_encode([
+                'success' => true,
+            ]);
         }
-
-        $cart_item_key = WC()->cart
-            ? WC()->cart->add_to_cart($product_id, 1, 0, [], $cart_data)
-            : false;
-
-        wp_send_json([
-            'success' => !empty($cart_item_key),
-        ]);
 
         wp_die();
     }
