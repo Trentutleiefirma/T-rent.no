@@ -220,10 +220,23 @@ class Ajax extends Booking_Manager
         $posted_data = $this->rearrange_form_data($posted_data);
         $ajax_data = $this->prepare_form_data($posted_data);
 
-        $cost            = floatval(get_post_meta($quote_id, '_quote_price', true));
         $cost_details = $ajax_data['rental_days_and_costs']['price_breakdown'];
-        $deposit_total = $cost_details['deposit_total'];
-        $cost = $cost - $deposit_total;
+        $deposit_total = (float) $cost_details['deposit_total'];
+        $quote_total = (float) get_post_meta($quote_id, '_quote_price', true);
+
+        // Correct only the exact extra-day amount in older one-day quotes.
+        // Any other approved or negotiated quote price remains authoritative.
+        $calculated_total = (float) $cost_details['total'];
+        $daily_cost = (float) ($cost_details['duration_breakdown']['daily'] ?? 0);
+        if (
+            (int) $ajax_data['rental_days_and_costs']['days'] === 1 &&
+            $daily_cost > 0 &&
+            abs($quote_total - ($calculated_total + $daily_cost)) < 0.01
+        ) {
+            $quote_total = $calculated_total;
+        }
+
+        $cost = $quote_total - $deposit_total;
 
         $instance_payment = $this->handle_instant_payment(['deposit_free_total' => $cost], $display);
         $due_payment = $cost - $instance_payment;
@@ -236,13 +249,30 @@ class Ajax extends Booking_Manager
         $ajax_data['posted_data'] = $posted_data;
         $cart_data['rental_data'] = $ajax_data;
 
-        if (WC()->cart->add_to_cart($product_id, $quantity = 1, $variation_id = '', $variation = '', $cart_data)) {
-            echo json_encode([
-                'success' => true,
-            ]);
+        // Keep one cart line per quote and product. Add first so an error
+        // cannot remove an existing line from the customer's cart.
+        $existing_quote_keys = [];
+        foreach (WC()->cart->get_cart() as $cart_key => $cart_item) {
+            if (
+                (int) ($cart_item['product_id'] ?? 0) === (int) $product_id &&
+                (int) ($cart_item['rental_data']['quote_id'] ?? 0) === (int) $quote_id
+            ) {
+                $existing_quote_keys[] = $cart_key;
+            }
         }
 
-        wp_die();
+        $new_cart_key = WC()->cart->add_to_cart($product_id, 1, 0, [], $cart_data);
+        if (!$new_cart_key) {
+            wp_send_json(['success' => false, 'message' => __('Could not add this quote to the cart.', 'redq-rental')]);
+        }
+
+        foreach ($existing_quote_keys as $cart_key) {
+            if ($cart_key !== $new_cart_key) {
+                WC()->cart->remove_cart_item($cart_key);
+            }
+        }
+
+        wp_send_json(['success' => true]);
     }
 
     /**
