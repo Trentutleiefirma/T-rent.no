@@ -221,17 +221,38 @@ class Ajax extends Booking_Manager
         $ajax_data = $this->prepare_form_data($posted_data);
 
         /*
-         * Always use the freshly calculated rental price when an accepted quote
-         * is moved to the cart. The saved _quote_price may contain an older
-         * two-day calculation made before the original pickup/dropoff times
-         * were restored. Reusing it makes a 19:00-21:00 evening-before pickup
-         * cost an extra rental day even though calculate_rental_duration() has
-         * correctly normalized the booking to one paid day.
+         * The accepted quote can contain a stale two-day price from before the
+         * original pickup/dropoff times were restored. Use the new calculation
+         * only for that exact failure pattern: the booking is now one paid day
+         * and the saved rental amount is exactly twice the current amount.
+         *
+         * Other saved quote amounts are preserved because an administrator may
+         * have entered a custom agreed price.
          */
         $cost_details = $ajax_data['rental_days_and_costs']['price_breakdown'];
-        $cost = isset($cost_details['deposit_free_total'])
+        $calculated_cost = isset($cost_details['deposit_free_total'])
             ? floatval($cost_details['deposit_free_total'])
             : 0.0;
+        $deposit_total = isset($cost_details['deposit_total'])
+            ? floatval($cost_details['deposit_total'])
+            : 0.0;
+        $stored_quote_total = floatval(get_post_meta($quote_id, '_quote_price', true));
+        $stored_rental_cost = max(0, $stored_quote_total - $deposit_total);
+        $calculated_days = isset($ajax_data['rental_days_and_costs']['days'])
+            ? intval($ajax_data['rental_days_and_costs']['days'])
+            : 0;
+
+        $has_stale_two_day_price = (
+            $calculated_days === 1 &&
+            $calculated_cost > 0 &&
+            abs($stored_rental_cost - ($calculated_cost * 2)) < 0.01
+        );
+
+        if ($stored_quote_total > 0 && !$has_stale_two_day_price) {
+            $cost = $stored_rental_cost;
+        } else {
+            $cost = $calculated_cost;
+        }
 
         $instance_payment = $this->handle_instant_payment(
             ['deposit_free_total' => $cost],
