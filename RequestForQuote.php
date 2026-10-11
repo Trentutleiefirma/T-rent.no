@@ -144,11 +144,31 @@ class RequestForQuote
      */
     public function notify_quote_status_transition($new_status, $old_status, $post)
     {
+        $quote_statuses = [
+            'quote-pending',
+            'quote-processing',
+            'quote-on-hold',
+            'quote-accepted',
+            'quote-completed',
+            'quote-cancelled',
+        ];
+
         if (
             $post->post_type !== 'request_quote' ||
             $old_status === 'new' ||
             $new_status === $old_status
         ) {
+            return;
+        }
+
+        // A later approval is a new transition and may send a new email.
+        if ($old_status === 'quote-accepted') {
+            delete_post_meta($post->ID, '_trent_quote_accepted_email_sent');
+        }
+
+        // Moving a quote to the trash (or restoring it) is not a customer
+        // status update. Only RnB's registered quote statuses send mail.
+        if (!in_array($old_status, $quote_statuses, true) || !in_array($new_status, $quote_statuses, true)) {
             return;
         }
 
@@ -246,8 +266,8 @@ class RequestForQuote
         }
 
         $posted = $_POST;
-        $form_data = $posted['form_data'];
-        $product_id = $posted['product_id'];
+        $form_data = isset($posted['form_data']) && is_array($posted['form_data']) ? $posted['form_data'] : [];
+        $product_id = isset($posted['product_id']) ? absint($posted['product_id']) : 0;
 
         // Quote requests do not pass through the ordinary cart validation.
         // Enforce the same pickup notice before creating a customer or quote.
@@ -265,14 +285,13 @@ class RequestForQuote
         }
 
         if (
-            $pickup_date && $pickup_time &&
-            function_exists('trent_rnb_pickup_has_notice') &&
+            !function_exists('trent_rnb_pickup_has_notice') ||
             !trent_rnb_pickup_has_notice($pickup_date, $pickup_time, $product_id)
         ) {
             wp_send_json([
                 'success' => false,
                 'status_code' => 400,
-                'message' => esc_html__('Henting kan tidligst skje én time etter bestilling.', 'redq-rental'),
+                'message' => esc_html__('Velg gyldig hentedato og hentetid minst én time frem i tid.', 'redq-rental'),
             ]);
         }
 

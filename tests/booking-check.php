@@ -43,9 +43,13 @@ namespace {
     function wp_date($format) { return date($format); }
     function wp_timezone() { return new \DateTimeZone('Europe/Oslo'); }
     function redq_rental_get_settings($product, $section) {
+        if ($section === 'labels') {
+            return ['labels' => ['invalid_range_notice' => 'Invalid date range']];
+        }
         return ['conditions' => [
             'max_time_late' => 1,
             'date_format' => 'm/d/Y',
+            'time_format' => '24-hours',
             'pay_extra_hours' => 'no',
             'euro_format' => 'no',
         ]];
@@ -63,8 +67,16 @@ namespace {
     function rnb_get_quote_admin_profile() { return ['email' => 'owner@example.test', 'name' => 'T-Rent']; }
     function get_post_meta($id, $key, $single) { return $GLOBALS['quote_meta'][$id][$key] ?? ''; }
     function update_post_meta($id, $key, $value) { $GLOBALS['quote_meta'][$id][$key] = $value; }
+    function delete_post_meta($id, $key) { unset($GLOBALS['quote_meta'][$id][$key]); }
     function current_time($format) { return '2026-10-09 10:00:00'; }
     function __($message, $domain) { return $message; }
+    function esc_html__($message, $domain) { return $message; }
+    function wp_verify_nonce($nonce, $action) { return true; }
+    class JsonResponse extends \Exception {
+        public $response;
+        public function __construct($response) { $this->response = $response; }
+    }
+    function wp_send_json($response) { throw new JsonResponse($response); }
 
     class FakeDB
     {
@@ -85,6 +97,7 @@ namespace {
     require dirname(__DIR__) . '/functions.php';
     require dirname(__DIR__) . '/Data_Trait.php';
     require dirname(__DIR__) . '/Period_Trait.php';
+    require dirname(__DIR__) . '/Error_Trait.php';
     require dirname(__DIR__) . '/RequestForQuote.php';
 
     $calculator = new class { use Data_Trait; };
@@ -119,13 +132,50 @@ namespace {
     $now = new \DateTimeImmutable('now', wp_timezone());
     expect_same(false, trent_rnb_pickup_has_notice($now->modify('+50 minutes')->format('Y-m-d'), $now->modify('+50 minutes')->format('H:i'), 100), 'pickup within 50 minutes rejected');
     expect_same(true, trent_rnb_pickup_has_notice($now->modify('+70 minutes')->format('Y-m-d'), $now->modify('+70 minutes')->format('H:i'), 100), 'pickup after 70 minutes allowed');
+    expect_same(false, trent_rnb_pickup_has_notice('2030-02-31', '12:00', 100), 'invalid pickup date rejected');
+    expect_same(false, trent_rnb_pickup_has_notice('2030-10-11', '', 100), 'missing pickup time rejected');
+
+    $validator = new class { use \REDQ_RnB\Traits\Error_Trait; };
+    $direct_errors = $validator->handle_form([
+        'product_id' => 100,
+        'inventory_id' => 200,
+        'pickup_date' => '2030-10-11',
+        'pickup_time' => '',
+    ]);
+    expect_same(true, !empty($direct_errors), 'direct booking without pickup time rejected');
 
     $request = (new \ReflectionClass(RequestForQuote::class))->newInstanceWithoutConstructor();
+    $_POST = [
+        'nonce' => 'valid',
+        'product_id' => 100,
+        'form_data' => [['name' => 'pickup_date', 'value' => '10/11/2030']],
+    ];
+    try {
+        $request->request_for_a_quote();
+        throw new \RuntimeException('Quote without pickup time was accepted');
+    } catch (JsonResponse $response) {
+        expect_same(400, $response->response['status_code'], 'quote without pickup time rejected before creation');
+    }
+    $_POST['form_data'][] = ['name' => 'pickup_time', 'value' => '12:00'];
+    $_POST['form_data'][0]['value'] = '02/31/2030';
+    try {
+        $request->request_for_a_quote();
+        throw new \RuntimeException('Quote with invalid date was accepted');
+    } catch (JsonResponse $response) {
+        expect_same(400, $response->response['status_code'], 'quote with invalid date rejected before creation');
+    }
+
     $quote = (object) ['ID' => 31, 'post_type' => 'request_quote'];
     $request->notify_quote_status_transition('quote-accepted', 'quote-pending', $quote);
     $request->notify_quote_status_transition('quote-accepted', 'quote-pending', $quote);
     expect_same(1, \REDQ_RnB\Email::$accepted, 'accepted quote mail sent once');
-    $request->notify_quote_status_transition('quote-rejected', 'quote-pending', $quote);
-    expect_same(1, \REDQ_RnB\Email::$updates, 'other quote status notification');
+    $request->notify_quote_status_transition('quote-cancelled', 'quote-accepted', $quote);
+    expect_same(1, \REDQ_RnB\Email::$updates, 'cancelled quote status notification');
+    $request->notify_quote_status_transition('quote-accepted', 'quote-cancelled', $quote);
+    expect_same(2, \REDQ_RnB\Email::$accepted, 'new approval sends new accepted email');
+    $request->notify_quote_status_transition('trash', 'quote-accepted', $quote);
+    expect_same(1, \REDQ_RnB\Email::$updates, 'trash does not notify customer');
+    $request->notify_quote_status_transition('quote-accepted', 'trash', $quote);
+    expect_same(2, \REDQ_RnB\Email::$accepted, 'restoring from trash does not notify customer');
     echo "All booking checks passed\n";
 }

@@ -167,29 +167,43 @@ function rnb_get_default_return_time($product_id, $form_data = [])
  */
 function trent_rnb_pickup_has_notice($date, $time, $product_id)
 {
-    if (!$date || !$time || !$product_id) {
+    if (!is_scalar($date) || !is_scalar($time) || !$product_id) {
+        return false;
+    }
+
+    $date = trim((string) $date);
+    $time = trim((string) $time);
+    if ($date === '' || $time === '') {
         return false;
     }
 
     try {
         $settings = redq_rental_get_settings($product_id, 'conditions');
-        $euro_format = $settings['conditions']['euro_format'] ?? 'no';
-        $normalized_date = rnb_generalized_date_format($date, $euro_format);
-        $pickup = \DateTimeImmutable::createFromFormat(
-            '!Y-m-d H:i',
-            $normalized_date . ' ' . $time,
-            wp_timezone()
-        );
-        $errors = \DateTimeImmutable::getLastErrors();
+        $conditions = $settings['conditions'] ?? [];
+        $date_formats = array_unique([$conditions['date_format'] ?? 'm/d/Y', 'Y-m-d']);
+        $time_format = ($conditions['time_format'] ?? '24-hours') === '24-hours'
+            ? 'H:i'
+            : 'g:i a';
 
-        if (!$pickup || ($errors !== false && ($errors['warning_count'] || $errors['error_count']))) {
-            return false;
+        foreach ($date_formats as $date_format) {
+            // Quote forms use the product format; the cart may use ISO dates.
+            foreach (array_unique([$time_format, 'H:i']) as $format) {
+                $pickup = \DateTimeImmutable::createFromFormat(
+                    '!' . $date_format . ' ' . $format,
+                    $date . ' ' . $time,
+                    wp_timezone()
+                );
+                $errors = \DateTimeImmutable::getLastErrors();
+                if ($pickup && ($errors === false || (!$errors['warning_count'] && !$errors['error_count']))) {
+                    return $pickup >= (new \DateTimeImmutable('now', wp_timezone()))->modify('+60 minutes');
+                }
+            }
         }
-
-        return $pickup >= (new \DateTimeImmutable('now', wp_timezone()))->modify('+60 minutes');
     } catch (\Throwable $e) {
-        return false;
+        // An invalid or unsupported date/time must never bypass the notice.
     }
+
+    return false;
 }
 
 function rnb_format_weekend($weekends)
