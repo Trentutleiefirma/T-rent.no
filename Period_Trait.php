@@ -67,11 +67,11 @@ trait Period_Trait
     }
 
     /**
-     * T-Rent: dates that belong to confirmed WooCommerce rental bookings.
+     * T-Rent: dates touched by confirmed WooCommerce rental bookings.
      *
-     * RnB already calculates the actual charged/booked calendar dates and stores
-     * them in rnb_hidden_order_meta. Using those dates avoids guessing from
-     * pickup/dropoff clock times and preserves T-Rent's evening-before logic.
+     * Pricing dates can differ from occupied dates when equipment is picked up
+     * free of charge the evening before. The availability table records the
+     * actual occupied interval and is the source for the red calendar status.
      *
      * @param int   $product_id
      * @param int   $inventory_id
@@ -95,14 +95,16 @@ trait Period_Trait
 
         $rows = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT order_id, item_id
+                "SELECT DISTINCT order_id, pickup_datetime, return_datetime
                  FROM {$wpdb->prefix}rnb_availability
                  WHERE product_id = %d
                    AND inventory_id = %d
                    AND block_by <> 'CUSTOM'
-                   AND delete_status = 0",
+                   AND delete_status = 0
+                   AND return_datetime > %s",
                 $product_id,
-                $inventory_id
+                $inventory_id,
+                wp_date('Y-m-d 00:00:00')
             ),
             ARRAY_A
         );
@@ -123,43 +125,47 @@ trait Period_Trait
         );
 
         $dates = [];
+        $confirmed_orders = [];
 
         foreach ($rows as $row) {
             $order_id = !empty($row['order_id']) ? absint($row['order_id']) : 0;
-            $item_id  = !empty($row['item_id']) ? absint($row['item_id']) : 0;
 
-            if (!$order_id || !$item_id) {
+            if (!$order_id) {
                 continue;
             }
 
-            $order = wc_get_order($order_id);
-            if (!$order || !in_array($order->get_status(), $confirmed_statuses, true)) {
+            if (!array_key_exists($order_id, $confirmed_orders)) {
+                $order = wc_get_order($order_id);
+                $confirmed_orders[$order_id] = $order && in_array($order->get_status(), $confirmed_statuses, true);
+            }
+
+            if (!$confirmed_orders[$order_id]) {
                 continue;
             }
 
-            $rental_data = wc_get_order_item_meta($item_id, 'rnb_hidden_order_meta', true);
-
-            if (!is_array($rental_data) || empty($rental_data)) {
-                $rental_data = wc_get_order_item_meta($item_id, '_rnb_hidden_order_meta', true);
-            }
-
-            $saved_dates = [];
-
-            if (
-                is_array($rental_data) &&
-                !empty($rental_data['rental_days_and_costs']['booked_dates']['saved']) &&
-                is_array($rental_data['rental_days_and_costs']['booked_dates']['saved'])
-            ) {
-                $saved_dates = $rental_data['rental_days_and_costs']['booked_dates']['saved'];
-            }
-
-            foreach ($saved_dates as $saved_date) {
-                try {
-                    $date = new Carbon($saved_date);
-                    $dates[] = $date->format($date_format);
-                } catch (\Exception $e) {
+            try {
+                $pickup = new Carbon($row['pickup_datetime']);
+                $return = new Carbon($row['return_datetime']);
+                if ($return->lte($pickup)) {
                     continue;
                 }
+
+                $first_day = $pickup->copy()->startOfDay();
+                $last_day = $return->copy()->startOfDay();
+                // A return at midnight frees the equipment for that new day.
+                if ($return->format('H:i:s') === '00:00:00') {
+                    $last_day->subDay();
+                }
+
+                if ($last_day->lt($first_day)) {
+                    continue;
+                }
+
+                foreach (CarbonPeriod::create($first_day, '1 day', $last_day) as $day) {
+                    $dates[] = $day->format($date_format);
+                }
+            } catch (\Exception $e) {
+                continue;
             }
         }
 

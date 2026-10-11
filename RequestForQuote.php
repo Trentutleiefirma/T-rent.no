@@ -25,6 +25,7 @@ class RequestForQuote
         }
 
         add_action('save_post', array($this, 'redq_save_post'), 10, 2);
+        add_action('transition_post_status', array($this, 'notify_quote_status_transition'), 10, 3);
         //add_action( 'publish_post', array( $this, 'check_user_publish' ), 10, 2 );
         add_filter('add_menu_classes', array($this, 'bubble_count_number'));
         add_shortcode( 'rfq_guest_checkout_form', [$this, 'rfq_guest_checkout_form'] );
@@ -76,114 +77,11 @@ class RequestForQuote
 
     public function redq_save_post($post_id, $post)
     {
-
-        if (isset($_POST['previous_post_status']) && ($_POST['previous_post_status'] !== $post->post_status)) {
-            // send email
-
-            $form_data = json_decode(get_post_meta($post_id, 'order_quote_meta', true), true);
-
-            $from_name = '';
-            $from_email = '';
-            $from_phone = '';
-            $product_id = '';
-            $to_email = '';
-            $to_author_id = '';
-
-            $message_from_sender_html = '';
-
-            foreach ($form_data as $key => $meta) {
-                /**
-                 * Get the post author_id, author_email, prodct_id
-                 */
-                if (isset($meta['name']) && $meta['name'] === 'add-to-cart') {
-                    $product_id = $meta['value'];
-                    $to_author_id = get_post_field('post_author', $product_id);
-                    $to_email = get_the_author_meta('user_email', $to_author_id);
-                }
-                /**
-                 * Get the customer name, email, phone, message
-                 */
-                else if (isset($meta['forms'])) {
-                    $forms = $meta['forms'];
-                    foreach ($forms as $k => $v) {
-                        $message_from_sender_html .= "<p>" . $k . " : " . $v . "</p>";
-                        if ($k === 'email') {
-                            $from_email = $v;
-                        }
-                        if ($k === 'name') {
-                            $from_name = $v;
-                        }
-                    }
-                }
-            }
-
-            switch ($post->post_status) {
-                case 'quote-accepted':
-                    // send email to the customer
-
-                    // $prodct_id = get_post_meta($post->ID, 'add-to-cart', true);
-                    // $from_author_id = get_post_field('post_author', $prodct_id);
-                    // $from_email = get_the_author_meta('user_email', $from_author_id);
-                    // $from_name = get_the_author_meta('user_nicename', $from_author_id);
-
-                    $admin_profile = rnb_get_quote_admin_profile();
-
-                    $from_email = $admin_profile['email'];
-                    $from_name  = $admin_profile['name'];
-
-                    // To info
-                    //$to_author_id = get_post_field('post_author', $post->ID);
-                    //$to_email = get_the_author_meta('user_email', $to_author_id);
-
-                    // To info for customer
-                    $to_email = rnb_get_quote_customer_email($post->ID);
-
-                    $quote_id = $post->ID;
-
-                    $subject = __("Congratulations! Your quote request has been accepted", "redq-rental");
-                    $data_object = array(
-                        'quote_id' => $quote_id,
-                    );
-
-                    // Send the mail to the customer
-                    $email = new Email();
-                    $email->quote_accepted_notify_customer($to_email, $subject, $from_email, $from_name, $data_object);
-                    break;
-
-                default:
-                    // send email to the customer
-
-                    // $prodct_id = get_post_meta($post->ID, 'add-to-cart', true);
-                    // $from_author_id = get_post_field('post_author', $prodct_id);
-                    // $from_email = get_the_author_meta('user_email', $from_author_id);
-                    // $from_name = get_the_author_meta('user_nicename', $from_author_id);
-
-                    $admin_profile = rnb_get_quote_admin_profile();
-
-                    $from_email = $admin_profile['email'];
-                    $from_name  = $admin_profile['name'];
-
-                    // To info
-                    //$to_author_id = get_post_field('post_author', $post->ID);
-                    //$to_email = get_the_author_meta('user_email', $to_author_id);
-
-                    // To info for customer
-                    $to_email = rnb_get_quote_customer_email($post->ID);
-
-                    $quote_id = $post->ID;
-
-                    $subject = __("Your quote request status has been updated", "redq-rental");
-                    $data_object = array(
-                        'quote_id' => $quote_id,
-                    );
-
-                    // Send the mail to the customer
-                    $email = new Email();
-                    $email->quote_status_update_notify_customer($to_email, $subject, $from_email, $from_name, $data_object);
-                    break;
-            }
+        if ($post->post_type !== 'request_quote') {
+            return;
         }
 
+        // Status notifications are handled by transition_post_status below.
         if (isset($_POST['quote_price'])) {
             update_post_meta($post_id, '_quote_price', $_POST['quote_price']);
         }
@@ -237,6 +135,56 @@ class RequestForQuote
             $email = new Email();
             $email->owner_reply_message($to_email, $subject, $from_email, $from_name, $data_object);
         }
+    }
+
+    /**
+     * Send the customer a notification for real quote status transitions.
+     * This also runs when an app or REST request approves a quote without the
+     * previous_post_status field used by the old wp-admin form handler.
+     */
+    public function notify_quote_status_transition($new_status, $old_status, $post)
+    {
+        if (
+            $post->post_type !== 'request_quote' ||
+            $old_status === 'new' ||
+            $new_status === $old_status
+        ) {
+            return;
+        }
+
+        $to_email = rnb_get_quote_customer_email($post->ID);
+        if (!$to_email || !is_email($to_email)) {
+            return;
+        }
+
+        $admin_profile = rnb_get_quote_admin_profile();
+        $from_email = $admin_profile['email'];
+        $from_name = $admin_profile['name'];
+        $data = ['quote_id' => $post->ID];
+        $email = new Email();
+
+        if ($new_status === 'quote-accepted') {
+            if (get_post_meta($post->ID, '_trent_quote_accepted_email_sent', true)) {
+                return;
+            }
+
+            $subject = __('Congratulations! Your quote request has been accepted', 'redq-rental');
+            $sent = $email->quote_accepted_notify_customer(
+                $to_email,
+                $subject,
+                $from_email,
+                $from_name,
+                $data
+            );
+
+            if ($sent) {
+                update_post_meta($post->ID, '_trent_quote_accepted_email_sent', current_time('mysql'));
+            }
+            return;
+        }
+
+        $subject = __('Your quote request status has been updated', 'redq-rental');
+        $email->quote_status_update_notify_customer($to_email, $subject, $from_email, $from_name, $data);
     }
 
     public static function get_the_user_ip()
@@ -300,6 +248,33 @@ class RequestForQuote
         $posted = $_POST;
         $form_data = $posted['form_data'];
         $product_id = $posted['product_id'];
+
+        // Quote requests do not pass through the ordinary cart validation.
+        // Enforce the same pickup notice before creating a customer or quote.
+        $pickup_date = '';
+        $pickup_time = '';
+        foreach ((array) $form_data as $field) {
+            if (!is_array($field) || empty($field['name'])) {
+                continue;
+            }
+            if ($field['name'] === 'pickup_date') {
+                $pickup_date = $field['value'] ?? '';
+            } elseif ($field['name'] === 'pickup_time') {
+                $pickup_time = $field['value'] ?? '';
+            }
+        }
+
+        if (
+            $pickup_date && $pickup_time &&
+            function_exists('trent_rnb_pickup_has_notice') &&
+            !trent_rnb_pickup_has_notice($pickup_date, $pickup_time, $product_id)
+        ) {
+            wp_send_json([
+                'success' => false,
+                'status_code' => 400,
+                'message' => esc_html__('Henting kan tidligst skje én time etter bestilling.', 'redq-rental'),
+            ]);
+        }
 
         $user_data = $posted['user_data'];
         $user_email = $user_data['quote_email'];

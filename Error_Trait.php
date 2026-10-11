@@ -88,6 +88,17 @@ trait Error_Trait
             $errors[] = $labels['invalid_range_notice'];
         }
 
+        // Checkout may happen after an accepted quote was created. Apply the
+        // preparation window to the original request, not a later payment.
+        if (
+            !$checkout &&
+            !empty($args['pickup_time']) &&
+            function_exists('trent_rnb_pickup_has_notice') &&
+            !trent_rnb_pickup_has_notice($args['pickup_date'], $args['pickup_time'], $product_id)
+        ) {
+            $errors[] = esc_html__('Henting kan tidligst skje én time etter bestilling.', 'redq-rental');
+        }
+
         $holidays = redq_rental_handle_holidays($product_id);
         $is_holiday = $this->check_dates_against_holidays(
             array_merge($args, ['return_date' => $return_date]),

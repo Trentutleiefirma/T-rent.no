@@ -37,19 +37,25 @@
             <div class="container">
                 <div class="flex-row">
                     <div class="header-info-left">
-                        <?php if (get_theme_mod('land_excavator_header_info_phone','Toll Free: +1234-567-7890')): ?>
+                        <?php
+                        $trent_phone_label = (string) get_theme_mod('land_excavator_header_info_phone', 'Toll Free: +1234-567-7890');
+                        $trent_phone_digits = preg_replace('/\D+/', '', $trent_phone_label);
+                        $trent_phone_uri = strlen($trent_phone_digits) === 8
+                            ? '+47' . $trent_phone_digits
+                            : (strpos($trent_phone_label, '+') !== false ? '+' : '') . $trent_phone_digits;
+                        if ($trent_phone_label && $trent_phone_digits): ?>
                             <span class="contact-info">
                                 <span class="main-box phone">
-                                    <span class="main-head"><a href="tel:<?php echo esc_attr(get_theme_mod('land_excavator_header_info_phone', 'Toll Free: +1234-567-7890')); ?>"><i class="<?php echo esc_attr(get_theme_mod('land_excavator_header_phone_icon','fas fa-phone')); ?>"></i><?php echo esc_html(get_theme_mod('land_excavator_header_info_phone','Toll Free: +1234-567-7890')); ?></a></span>
+                                    <span class="main-head"><a href="<?php echo esc_attr('tel:' . $trent_phone_uri); ?>"><i class="<?php echo esc_attr(get_theme_mod('land_excavator_header_phone_icon','fas fa-phone')); ?>"></i><?php echo esc_html($trent_phone_label); ?></a></span>
                                 </span>
                             </span>
                         <?php endif; ?>
                     </div>
                     <div class="header-info-right">
                         <?php if ( get_theme_mod('land_excavator_facebook_link_option','#') ) : ?><a href="<?php echo esc_url(get_theme_mod('land_excavator_facebook_link_option', '#')); ?>"><i class="fab fa-facebook"></i></a><?php endif; ?>
-                        <?php if ( get_theme_mod('land_excavator_twitter_link_option','#') ) : ?><a href="<?php echo esc_url(get_theme_mod('land_excavator_twitter_link_option', '#')); ?>"><i class="fab fa-twitter"></i></span><?php endif; ?>
+                        <?php if ( get_theme_mod('land_excavator_twitter_link_option','#') ) : ?><a href="<?php echo esc_url(get_theme_mod('land_excavator_twitter_link_option', '#')); ?>"><i class="fab fa-twitter"></i></a><?php endif; ?>
                         <?php if ( get_theme_mod('land_excavator_instagram_link_option','#') ) : ?><a href="<?php echo esc_url(get_theme_mod('land_excavator_instagram_link_option', '#')); ?>"><i class="fab fa-instagram"></i></a><?php endif; ?>
-                        <?php if ( get_theme_mod('land_excavator_linkedin_link_option','#') ) : ?><a href="<?php echo esc_url(get_theme_mod('land_excavator_linkedin_link_option', '#')); ?>"><i class="fab fa-linkedin-in"></i></span><?php endif; ?>
+                        <?php if ( get_theme_mod('land_excavator_linkedin_link_option','#') ) : ?><a href="<?php echo esc_url(get_theme_mod('land_excavator_linkedin_link_option', '#')); ?>"><i class="fab fa-linkedin-in"></i></a><?php endif; ?>
                         <?php if ( get_theme_mod('land_excavator_pinterest_link_option','#') ) : ?><a href="<?php echo esc_url(get_theme_mod('land_excavator_pinterest_link_option', '#')); ?>"><i class="fab fa-pinterest-p"></i></a><?php endif; ?>
                         <?php if ( get_theme_mod('land_excavator_youtube_link_option','#') ) : ?><a href="<?php echo esc_url(get_theme_mod('land_excavator_youtube_link_option', '#')); ?>"><i class="fab fa-youtube"></i></a><?php endif; ?>
                         <?php if( get_theme_mod( 'land_excavator_header_search', false) == 1) { ?>
@@ -108,10 +114,28 @@
                                 <i class="fas fa-bars"></i>
                             </button>
                             <?php
+                            // Hide the gateway callback page from the public menu
+                            // and use the Norwegian name for the cart.
+                            $trent_menu_cleanup = static function ($items) {
+                                $visible = [];
+                                foreach ($items as $item) {
+                                    if ($item->object === 'page' && (int) $item->object_id === 770) {
+                                        continue;
+                                    }
+                                    if ($item->object === 'page' && (int) $item->object_id === 14) {
+                                        $item = clone $item;
+                                        $item->title = 'Handlekurv';
+                                    }
+                                    $visible[] = $item;
+                                }
+                                return $visible;
+                            };
+                            add_filter('wp_nav_menu_objects', $trent_menu_cleanup);
                             wp_nav_menu(array(
                                 'theme_location' => 'menu-1',
                                 'menu_id'        => 'primary-menu',
                             ));
+                            remove_filter('wp_nav_menu_objects', $trent_menu_cleanup);
                             ?>
                         </nav>
                     </div>

@@ -161,6 +161,37 @@ function rnb_get_default_return_time($product_id, $form_data = [])
     return '20:00';
 }
 
+/**
+ * Allow same-day pickup only after one hour of preparation time.
+ * Both the direct cart path and the quote request path call this check.
+ */
+function trent_rnb_pickup_has_notice($date, $time, $product_id)
+{
+    if (!$date || !$time || !$product_id) {
+        return false;
+    }
+
+    try {
+        $settings = redq_rental_get_settings($product_id, 'conditions');
+        $euro_format = $settings['conditions']['euro_format'] ?? 'no';
+        $normalized_date = rnb_generalized_date_format($date, $euro_format);
+        $pickup = \DateTimeImmutable::createFromFormat(
+            '!Y-m-d H:i',
+            $normalized_date . ' ' . $time,
+            wp_timezone()
+        );
+        $errors = \DateTimeImmutable::getLastErrors();
+
+        if (!$pickup || ($errors !== false && ($errors['warning_count'] || $errors['error_count']))) {
+            return false;
+        }
+
+        return $pickup >= (new \DateTimeImmutable('now', wp_timezone()))->modify('+60 minutes');
+    } catch (\Throwable $e) {
+        return false;
+    }
+}
+
 function rnb_format_weekend($weekends)
 {
     if (empty($weekends)) {
@@ -397,11 +428,14 @@ add_action('wp_enqueue_scripts', function () {
       var minimumMinutes = openMinutes;
       var now = new Date();
 
-      // Same day: do not show times that have already passed.
+      // Same-day pickup requires one hour of preparation time.
       if (sameLocalDate(selectedDate, now)) {
         var nowMinutes = now.getHours() * 60 + now.getMinutes();
         if (now.getSeconds() > 0) {
           nowMinutes += 1;
+        }
+        if (isPickup) {
+          nowMinutes += 60;
         }
         minimumMinutes = Math.max(
           minimumMinutes,

@@ -290,9 +290,20 @@ trait Data_Trait
             $hours = $hours - $max_hours_late;
         }
 
+        // The evening-before pickup occupies part of the preceding date, but
+        // the charged rental dates begin the following morning. Keep this list
+        // for pricing; availability uses the actual pickup/return datetimes.
+        $charged_start = $pickupPeriod->copy()->startOfDay();
+        if (
+            !$pickupPeriod->isSameDay($returnPeriod) &&
+            $pickupPeriod->format('H:i') >= '19:00' &&
+            $pickupPeriod->format('H:i') <= '21:00'
+        ) {
+            $charged_start->addDay();
+        }
+
         while ($count < $days) {
-            $start = new Carbon($args['pickup_date'] . ' ' . $args['pickup_time']);
-            $date = $start->copy()->addDay($count);
+            $date = $charged_start->copy()->addDay($count);
             $bookedDates['formatted'][] = $date->format($output_format);
             $bookedDates['saved'][] = $date->format('Y-m-d');
             $bookedDates['iso'][] = strtotime($date);
