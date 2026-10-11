@@ -423,7 +423,7 @@ jQuery(document).ready(function ($) {
             if (isSameLocalDate(ct, now)) {
               effectiveMin = Math.max(
                 effectiveMin,
-                now.getHours() * 60 + now.getMinutes()
+                now.getHours() * 60 + now.getMinutes() + (isPickup ? 60 : 0)
               );
             }
 
