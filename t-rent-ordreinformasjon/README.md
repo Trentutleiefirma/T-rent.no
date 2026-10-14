@@ -1,10 +1,10 @@
-# T-Rent Ordreinformasjon 1.1.0
+# T-Rent Ordreinformasjon 1.1.1
 
 Et komplett, separat WordPress-tillegg. Installer hele ZIP-filen via **Utvidelser → Legg til ny → Last opp utvidelse**, og aktiver **T-Rent Ordreinformasjon**. Det skal ikke limes inn i RnB, `functions.php` eller `Email.php`.
 
 ## Hva tillegget gjør
 
-Den faste informasjonen legges inn før ordresammendraget i kundens WooCommerce-mail `customer_processing_order` («under behandling»). Den vises også når ingen produkter har `maskin_info`, eller et produkt er slettet. Innholdet er henting foran låven til høyre, tilbakelevering innen kl. 20 siste leiedag, åpningstider, avtalt henting kvelden før, telefon og kartlenke.
+Den faste informasjonen legges inn før ordresammendraget i kundens WooCommerce-mail `customer_processing_order` («under behandling»). Den vises også når ingen produkter har `maskin_info`, eller et produkt er slettet. Innholdet er henting foran låven til høyre, tilbakelevering innen kl. 20 siste leiedag, åpningstider, avtalt henting kvelden før, den tidligere teksten «Du finner brukerinformasjon og tips til utstyret lenger ned i denne e-posten», telefon og kartlenke.
 
 Produktenes `maskin_info` vises separat etter ordresammendraget når feltet finnes. Som tidligere vises maskininformasjon i både «under behandling» og «fullført». Variantprodukter arver informasjon fra hovedproduktet når variantfeltet er tomt eller bare inneholder tom HTML som `<p></p>` eller `&nbsp;`. HTML og ren tekst støttes.
 

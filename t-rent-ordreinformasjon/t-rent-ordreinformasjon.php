@@ -2,7 +2,7 @@
 /**
  * Plugin Name: T-Rent Ordreinformasjon
  * Description: Fast henteinformasjon i kundens ordrebekreftelse, med maskininfo når den finnes.
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: T-Rent
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce
@@ -202,6 +202,7 @@ if (!class_exists('TRent_Order_Email_Information', false)) {
                 echo "Tilbakelevering senest kl. 20:00 siste leiedag, om ikke annet er avtalt.\n\n";
                 echo "ÅPNINGSTIDER\nMandag–fredag: 08:00–20:00\nLørdag–søndag: 09:00–20:00\n";
                 echo "Henting kvelden før kl. 19:00–21:00 er mulig etter avtale dersom utstyret er ledig.\n\n";
+                echo "BRUKERINFORMASJON\nDu finner brukerinformasjon og tips til utstyret lenger ned i denne e-posten.\n\n";
                 echo "KONTAKT OSS\nTelefon: 920 72 993\nAdresse/kart: " . self::MAP_URL . "\n\n";
                 return;
             }
@@ -212,6 +213,7 @@ if (!class_exists('TRent_Order_Email_Information', false)) {
                 <p style="margin:0 0 16px;">Tilbakelevering senest <strong>kl. 20:00 siste leiedag</strong>, om ikke annet er avtalt.</p>
                 <p style="margin:0 0 6px;"><strong>Åpningstider</strong><br>Mandag–fredag: 08:00–20:00<br>Lørdag–søndag: 09:00–20:00</p>
                 <p style="margin:0 0 16px;">Henting kvelden før kl. 19:00–21:00 er mulig etter avtale dersom utstyret er ledig.</p>
+                <p style="margin:0 0 16px;"><strong>Brukerinformasjon:</strong><br>Du finner brukerinformasjon og tips til utstyret lenger ned i denne e-posten.</p>
                 <p style="margin:0;"><strong>Kontakt oss</strong><br>Telefon: <a href="tel:+4792072993">920 72 993</a><br>Adresse: <a href="<?php echo esc_url(self::MAP_URL); ?>">Vis hentested i Google Maps</a></p>
             </div>
             <?php

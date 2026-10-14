@@ -95,6 +95,7 @@ foreach ([false, true] as $plain) {
         check(strpos($mail, 'foran låven til høyre') !== false, 'pickup exists without machine info/product');
         check(strpos($mail, '08:00–20:00') !== false && strpos($mail, '09:00–20:00') !== false, 'both opening hours');
         check(strpos($mail, '20:00 siste leiedag') !== false, 'return deadline');
+        check(strpos($mail, 'Du finner brukerinformasjon og tips til utstyret lenger ned i denne e-posten.') !== false, 'usage-information pointer');
         check(strpos($mail, '920 72 993') !== false, 'contact number');
         check(strpos($mail, 'maps.app.goo.gl/SGGrLyovcMW5RNvH6') !== false, 'map link');
         check(strpos($mail, 'Info om maskinen din') === false && strpos($mail, 'INFO OM MASKINEN DIN') === false, 'no empty machine block');
@@ -154,7 +155,10 @@ foreach (['new_order', 'customer_on_hold_order', 'customer_invoice', 'customer_r
 $admin = render_test_email([$machine], 'customer_processing_order', false, true);
 check(strpos($admin, 'trent-order-information') === false && strpos($admin, 'trent-machine-information') === false, 'exclude administrator emails');
 $completed = render_test_email([$machine], 'customer_completed_order');
-check(strpos($completed, 'trent-order-information') === false && strpos($completed, 'Maskintips') !== false, 'preserve previous completed-mail machine-info scope');
+check(strpos($completed, 'trent-order-information') === false
+    && strpos($completed, 'Du finner brukerinformasjon og tips til utstyret') === false
+    && strpos($completed, 'Maskintips') !== false,
+    'preserve previous completed-mail machine-info scope');
 ob_start();
 TRent_Order_Email_Information::general_information(null, false, false, null);
 TRent_Order_Email_Information::machine_information(null, false, false, null);
