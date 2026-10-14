@@ -44,22 +44,26 @@ class Email
         $headers .= 'Content-type: text/html; charset=utf-8' . "\r\n";
 
         // Filters for the email
-        add_filter('wp_mail_from', function ($email) use ($from) {
+        $from_address_filter = function ($email) use ($from) {
             return $from;
-        });
-        add_filter('wp_mail_from_name', function ($name) use ($from_name) {
+        };
+        $from_name_filter = function ($name) use ($from_name) {
             return $from_name;
-        });
+        };
+        add_filter('wp_mail_from', $from_address_filter);
+        add_filter('wp_mail_from_name', $from_name_filter);
         add_filter('wp_mail_content_type', array($this, 'get_content_type'));
 
         // extract($args);
         // Send
-        wp_mail($to, $subject, $message, $headers);
+        $sent = wp_mail($to, $subject, $message, $headers);
 
         // Unhook filters
-        remove_filter('wp_mail_from', array($this, 'get_from_address'));
-        remove_filter('wp_mail_from_name', array($this, 'get_from_name'));
+        remove_filter('wp_mail_from', $from_address_filter);
+        remove_filter('wp_mail_from_name', $from_name_filter);
         remove_filter('wp_mail_content_type', array($this, 'get_content_type'));
+
+        return (bool) $sent;
     }
 
     public function quote_status_update_notify_customer($to, $subject, $from, $from_name, $data_object)

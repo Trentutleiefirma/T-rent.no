@@ -61,6 +61,17 @@ trait Error_Trait
             : $args['pickup_date'];
         $booking_quantity = isset($args['inventory_quantity']) ? $args['inventory_quantity'] : 1;
 
+        // Reject missing and malformed pickup fields before Carbon or pricing
+        // can supply a default time. Checkout of an existing quote is exempt.
+        if (
+            !$checkout &&
+            (!function_exists('trent_rnb_pickup_has_notice') ||
+                !trent_rnb_pickup_has_notice($args['pickup_date'], $args['pickup_time'] ?? '', $product_id))
+        ) {
+            $errors[] = esc_html__('Velg gyldig hentedato og hentetid minst én time frem i tid.', 'redq-rental');
+            return $errors;
+        }
+
         /*
          * T-Rent uses calendar days, not clock hours.
          * Validate the dates only. This deliberately does not compare pickup

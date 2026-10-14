@@ -70,6 +70,31 @@ function rnb_get_duration($start, $end)
     ], $defaults);
 }
 
+/**
+ * Keep an approved quote price, except for the legacy evening-pickup error.
+ *
+ * Older quotes could save exactly one extra daily charge even though the
+ * corrected cart calculation is one rental day. Only that exact mismatch is
+ * repaired; negotiated quote prices remain authoritative.
+ */
+function trent_rnb_quote_total_for_cart($quote_total, $calculated_total, $daily_cost, $days)
+{
+    $quote_total      = (float) $quote_total;
+    $calculated_total = (float) $calculated_total;
+    $daily_cost       = (float) $daily_cost;
+    $days             = (int) $days;
+
+    if (
+        $days === 1 &&
+        $daily_cost > 0 &&
+        abs($quote_total - ($calculated_total + $daily_cost)) < 0.01
+    ) {
+        return $calculated_total;
+    }
+
+    return $quote_total;
+}
+
 function rnb_get_default_inventory_id($product_id = null)
 {
     if (empty($product_id)) {
@@ -159,6 +184,51 @@ function rnb_get_default_pickup_time($product_id, $form_data = [])
 function rnb_get_default_return_time($product_id, $form_data = [])
 {
     return '20:00';
+}
+
+/**
+ * Allow same-day pickup only after one hour of preparation time.
+ * Both the direct cart path and the quote request path call this check.
+ */
+function trent_rnb_pickup_has_notice($date, $time, $product_id)
+{
+    if (!is_scalar($date) || !is_scalar($time) || !$product_id) {
+        return false;
+    }
+
+    $date = trim((string) $date);
+    $time = trim((string) $time);
+    if ($date === '' || $time === '') {
+        return false;
+    }
+
+    try {
+        $settings = redq_rental_get_settings($product_id, 'conditions');
+        $conditions = $settings['conditions'] ?? [];
+        $date_formats = array_unique([$conditions['date_format'] ?? 'm/d/Y', 'Y-m-d']);
+        $time_format = ($conditions['time_format'] ?? '24-hours') === '24-hours'
+            ? 'H:i'
+            : 'g:i a';
+
+        foreach ($date_formats as $date_format) {
+            // Quote forms use the product format; the cart may use ISO dates.
+            foreach (array_unique([$time_format, 'H:i']) as $format) {
+                $pickup = \DateTimeImmutable::createFromFormat(
+                    '!' . $date_format . ' ' . $format,
+                    $date . ' ' . $time,
+                    wp_timezone()
+                );
+                $errors = \DateTimeImmutable::getLastErrors();
+                if ($pickup && ($errors === false || (!$errors['warning_count'] && !$errors['error_count']))) {
+                    return $pickup >= (new \DateTimeImmutable('now', wp_timezone()))->modify('+60 minutes');
+                }
+            }
+        }
+    } catch (\Throwable $e) {
+        // An invalid or unsupported date/time must never bypass the notice.
+    }
+
+    return false;
 }
 
 function rnb_format_weekend($weekends)
@@ -397,11 +467,14 @@ add_action('wp_enqueue_scripts', function () {
       var minimumMinutes = openMinutes;
       var now = new Date();
 
-      // Same day: do not show times that have already passed.
+      // Same-day pickup requires one hour of preparation time.
       if (sameLocalDate(selectedDate, now)) {
         var nowMinutes = now.getHours() * 60 + now.getMinutes();
         if (now.getSeconds() > 0) {
           nowMinutes += 1;
+        }
+        if (isPickup) {
+          nowMinutes += 60;
         }
         minimumMinutes = Math.max(
           minimumMinutes,

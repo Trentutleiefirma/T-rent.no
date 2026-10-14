@@ -318,7 +318,7 @@ jQuery(document).ready(function ($) {
       if (selectedDate && isSameLocalDate(selectedDate, currentDateTime)) {
         const nowMinutes =
           currentDateTime.getHours() * 60 + currentDateTime.getMinutes();
-        minMinutes = Math.max(minMinutes, nowMinutes);
+        minMinutes = Math.max(minMinutes, nowMinutes + (isPickup ? 60 : 0));
       }
 
       if (!isPickup && $('#pickup-date').val() === $('#dropoff-date').val()) {
@@ -423,7 +423,7 @@ jQuery(document).ready(function ($) {
             if (isSameLocalDate(ct, now)) {
               effectiveMin = Math.max(
                 effectiveMin,
-                now.getHours() * 60 + now.getMinutes()
+                now.getHours() * 60 + now.getMinutes() + (isPickup ? 60 : 0)
               );
             }
 
