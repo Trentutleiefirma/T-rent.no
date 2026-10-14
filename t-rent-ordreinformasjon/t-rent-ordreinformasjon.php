@@ -2,7 +2,7 @@
 /**
  * Plugin Name: T-Rent Ordreinformasjon
  * Description: Fast henteinformasjon i kundens ordrebekreftelse, med maskininfo når den finnes.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: T-Rent
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce
@@ -14,9 +14,17 @@ if (!class_exists('TRent_Order_Email_Information', false)) {
     final class TRent_Order_Email_Information
     {
         private const MAP_URL = 'https://maps.app.goo.gl/SGGrLyovcMW5RNvH6';
+        private const SNAPSHOT_META = '_trent_maskin_info_snapshot';
+        private const SNAPSHOT_MARKER_META = '_trent_maskin_info_snapshot_saved';
 
         public static function register()
         {
+            // Save the machine instructions with new order lines. The checkout hook
+            // covers normal purchases, while the new-item hook also covers RnB quotes,
+            // manually created orders and other order-creation flows.
+            add_action('woocommerce_checkout_create_order_line_item', [__CLASS__, 'snapshot_checkout_item'], 10, 4);
+            add_action('woocommerce_new_order_item', [__CLASS__, 'snapshot_new_order_item'], 10, 3);
+
             // Register independently of RnB's quote emails and the active theme.
             add_action('woocommerce_email_order_details', [__CLASS__, 'prepare'], 1, 4);
             add_action('woocommerce_email_order_details', [__CLASS__, 'general_information'], 5, 4);
@@ -38,6 +46,113 @@ if (!class_exists('TRent_Order_Email_Information', false)) {
                 && is_object($email)
                 && isset($email->id)
                 && in_array($email->id, $ids, true);
+        }
+
+        private static function has_visible_machine_information($info)
+        {
+            if (!is_string($info)) {
+                return false;
+            }
+
+            $text = wp_strip_all_tags($info);
+            $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $text = preg_replace('/[\s\x{00A0}\x{200B}]+/u', '', $text);
+
+            return is_string($text) && $text !== '';
+        }
+
+        private static function product_machine_information($product)
+        {
+            if (!is_object($product) || !is_callable([$product, 'get_meta'])) {
+                return '';
+            }
+
+            $info = $product->get_meta('maskin_info', true);
+
+            // A variation containing only empty HTML (for example <p></p> or
+            // &nbsp;) must inherit the instructions from its parent product.
+            if (!self::has_visible_machine_information($info)
+                && is_callable([$product, 'get_parent_id'])
+                && $product->get_parent_id()) {
+                $parent = wc_get_product($product->get_parent_id());
+                if ($parent) {
+                    $info = $parent->get_meta('maskin_info', true);
+                }
+            }
+
+            if (!self::has_visible_machine_information($info)) {
+                return '';
+            }
+
+            return wp_kses_post($info);
+        }
+
+        private static function save_snapshot($item, $product)
+        {
+            if (!$item instanceof \WC_Order_Item_Product
+                || !is_callable([$item, 'add_meta_data'])
+                || !is_object($product)) {
+                return false;
+            }
+
+            $item->add_meta_data(self::SNAPSHOT_META, self::product_machine_information($product), true);
+            $item->add_meta_data(self::SNAPSHOT_MARKER_META, 'yes', true);
+
+            return true;
+        }
+
+        public static function snapshot_checkout_item($item, $cart_item_key = '', $values = [], $order = null)
+        {
+            if (!$item instanceof \WC_Order_Item_Product
+                || $item->get_meta(self::SNAPSHOT_MARKER_META, true) === 'yes') {
+                return;
+            }
+
+            $product = isset($values['data']) && is_object($values['data'])
+                ? $values['data']
+                : $item->get_product();
+
+            self::save_snapshot($item, $product);
+        }
+
+        public static function snapshot_new_order_item($item_id, $item, $order_id)
+        {
+            if (!$item instanceof \WC_Order_Item_Product
+                || $item->get_meta(self::SNAPSHOT_MARKER_META, true) === 'yes') {
+                return;
+            }
+
+            if (self::save_snapshot($item, $item->get_product()) && is_callable([$item, 'save_meta_data'])) {
+                $item->save_meta_data();
+            }
+        }
+
+        private static function item_machine_information($item, $product)
+        {
+            // New orders use their saved copy so later product edits or deletion
+            // cannot change the information in a resend or completed-order email.
+            if ($item->get_meta(self::SNAPSHOT_MARKER_META, true) === 'yes') {
+                $info = $item->get_meta(self::SNAPSHOT_META, true);
+                return self::has_visible_machine_information($info) ? wp_kses_post($info) : '';
+            }
+
+            // Existing orders created before version 1.1.0 have no snapshot.
+            return self::product_machine_information($product);
+        }
+
+        private static function item_deduplication_key($item, $product)
+        {
+            if (is_object($product) && is_callable([$product, 'get_id']) && $product->get_id()) {
+                return 'product:' . $product->get_id();
+            }
+            if (is_callable([$item, 'get_product_id']) && $item->get_product_id()) {
+                return 'product:' . $item->get_product_id();
+            }
+            if (is_callable([$item, 'get_id']) && $item->get_id()) {
+                return 'item:' . $item->get_id();
+            }
+
+            return 'object:' . spl_object_hash($item);
         }
 
         public static function prepare($order, $sent_to_admin = false, $plain_text = false, $email = null)
@@ -99,26 +214,18 @@ if (!class_exists('TRent_Order_Email_Information', false)) {
                 if (!$item instanceof \WC_Order_Item_Product) {
                     continue;
                 }
+
                 $product = $item->get_product();
-                if (!$product) {
+                $info = self::item_machine_information($item, $product);
+                if (!self::has_visible_machine_information($info)) {
                     continue;
                 }
-                $info = $product->get_meta('maskin_info', true);
-                // Variations can inherit the machine instructions from their parent.
-                if ((!is_string($info) || trim($info) === '') && $product->get_parent_id()) {
-                    $parent = wc_get_product($product->get_parent_id());
-                    if ($parent) {
-                        $info = $parent->get_meta('maskin_info', true);
-                    }
-                }
-                if (!is_string($info) || trim(wp_strip_all_tags($info)) === '') {
+
+                $deduplication_key = self::item_deduplication_key($item, $product);
+                if (isset($shown[$deduplication_key])) {
                     continue;
                 }
-                $product_id = $product->get_id();
-                if (isset($shown[$product_id])) {
-                    continue;
-                }
-                $shown[$product_id] = true;
+                $shown[$deduplication_key] = true;
 
                 if ($plain_text) {
                     echo "\nINFO OM MASKINEN DIN – " . wp_strip_all_tags($item->get_name()) . "\n";
