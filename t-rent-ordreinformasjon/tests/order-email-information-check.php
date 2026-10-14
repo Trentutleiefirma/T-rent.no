@@ -13,8 +13,9 @@ if (!is_file($support . '/plugin.php')) {
     fwrite(STDERR, "Pass a WordPress wp-includes directory.\n");
     exit(1);
 }
-define('ABSPATH', dirname(__DIR__) . '/');
+define('ABSPATH', dirname($support) . '/');
 define('WPINC', 'wp-includes');
+require $support . '/compat.php';
 require $support . '/plugin.php';
 require $support . '/formatting.php';
 require $support . '/kses.php';

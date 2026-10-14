@@ -61,6 +61,20 @@ if (!class_exists('TRent_Order_Email_Information', false)) {
             return is_string($text) && $text !== '';
         }
 
+        private static function sanitize_machine_information($info)
+        {
+            if (!is_string($info)) {
+                return '';
+            }
+
+            // Remove executable blocks together with their contents before KSES.
+            // KSES removes the tags, but keeping script text would be undesirable
+            // in a plain-text customer email.
+            $info = preg_replace('@<(script|style)\b[^>]*>.*?</\1\s*>@is', '', $info);
+
+            return is_string($info) ? wp_kses_post($info) : '';
+        }
+
         private static function product_machine_information($product)
         {
             if (!is_object($product) || !is_callable([$product, 'get_meta'])) {
@@ -84,7 +98,7 @@ if (!class_exists('TRent_Order_Email_Information', false)) {
                 return '';
             }
 
-            return wp_kses_post($info);
+            return self::sanitize_machine_information($info);
         }
 
         private static function save_snapshot($item, $product)
@@ -133,7 +147,7 @@ if (!class_exists('TRent_Order_Email_Information', false)) {
             // cannot change the information in a resend or completed-order email.
             if ($item->get_meta(self::SNAPSHOT_MARKER_META, true) === 'yes') {
                 $info = $item->get_meta(self::SNAPSHOT_META, true);
-                return self::has_visible_machine_information($info) ? wp_kses_post($info) : '';
+                return self::has_visible_machine_information($info) ? self::sanitize_machine_information($info) : '';
             }
 
             // Existing orders created before version 1.1.0 have no snapshot.
