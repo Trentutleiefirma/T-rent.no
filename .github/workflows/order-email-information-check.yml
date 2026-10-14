@@ -39,9 +39,9 @@ jobs:
         run: php tests/order-email-information-check.php /tmp/wordpress/wp-includes
       - name: Verify installable ZIP
         run: |
-          unzip -t releases/t-rent-ordreinformasjon-1.1.0.zip
+          unzip -t releases/t-rent-ordreinformasjon-1.1.1.zip
           test_dir="$(mktemp -d)"
-          unzip -q releases/t-rent-ordreinformasjon-1.1.0.zip -d "$test_dir"
+          unzip -q releases/t-rent-ordreinformasjon-1.1.1.zip -d "$test_dir"
           cmp t-rent-ordreinformasjon/t-rent-ordreinformasjon.php \
             "$test_dir/t-rent-ordreinformasjon/t-rent-ordreinformasjon.php"
           cmp t-rent-ordreinformasjon/tests/order-email-information-check.php \
