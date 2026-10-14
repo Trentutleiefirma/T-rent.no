@@ -115,6 +115,27 @@ namespace {
     expect_same(1, $evening['days'], 'evening pickup is one paid day');
     expect_same(['2026-10-10'], $evening['booked_dates']['saved'], 'evening pickup starts paid dates tomorrow');
 
+    // Exact reproduction from quote #853: 15 Oct 20:00 to 16 Oct 20:00.
+    $quote_853 = $make_booking('2026-10-15 20:00', '2026-10-16 20:00');
+    expect_same(1, $quote_853['days'], 'quote 853 converts to one cart day');
+    expect_same(['2026-10-16'], $quote_853['booked_dates']['saved'], 'quote 853 charges 16 October only');
+
+    expect_same(
+        1299.0,
+        trent_rnb_quote_total_for_cart(1299, 1299, 299, 1),
+        'correct one-day quote total stays unchanged'
+    );
+    expect_same(
+        1299.0,
+        trent_rnb_quote_total_for_cart(1598, 1299, 299, 1),
+        'legacy extra day is removed during quote checkout'
+    );
+    expect_same(
+        1399.0,
+        trent_rnb_quote_total_for_cart(1399, 1299, 299, 1),
+        'negotiated quote total stays unchanged'
+    );
+
     $long = $make_booking('2026-10-09 19:00', '2026-10-11 20:00');
     expect_same(['2026-10-10', '2026-10-11'], $long['booked_dates']['saved'], 'multi-day paid dates');
 
