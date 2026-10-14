@@ -70,6 +70,31 @@ function rnb_get_duration($start, $end)
     ], $defaults);
 }
 
+/**
+ * Keep an approved quote price, except for the legacy evening-pickup error.
+ *
+ * Older quotes could save exactly one extra daily charge even though the
+ * corrected cart calculation is one rental day. Only that exact mismatch is
+ * repaired; negotiated quote prices remain authoritative.
+ */
+function trent_rnb_quote_total_for_cart($quote_total, $calculated_total, $daily_cost, $days)
+{
+    $quote_total      = (float) $quote_total;
+    $calculated_total = (float) $calculated_total;
+    $daily_cost       = (float) $daily_cost;
+    $days             = (int) $days;
+
+    if (
+        $days === 1 &&
+        $daily_cost > 0 &&
+        abs($quote_total - ($calculated_total + $daily_cost)) < 0.01
+    ) {
+        return $calculated_total;
+    }
+
+    return $quote_total;
+}
+
 function rnb_get_default_inventory_id($product_id = null)
 {
     if (empty($product_id)) {
