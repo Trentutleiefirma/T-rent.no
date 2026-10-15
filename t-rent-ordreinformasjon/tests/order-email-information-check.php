@@ -18,6 +18,26 @@ define('WPINC', 'wp-includes');
 require $support . '/compat.php';
 require $support . '/plugin.php';
 require $support . '/formatting.php';
+
+// Newer WordPress versions use the HTML API from KSES. A full WordPress
+// bootstrap loads these classes before kses.php; this standalone check must do
+// the same while remaining compatible with older versions where some files do
+// not exist yet.
+$html_api_dependencies = [
+    $support . '/class-wp-token-map.php',
+    $support . '/html-api/html5-named-character-references.php',
+    $support . '/html-api/class-wp-html-attribute-token.php',
+    $support . '/html-api/class-wp-html-span.php',
+    $support . '/html-api/class-wp-html-doctype-info.php',
+    $support . '/html-api/class-wp-html-text-replacement.php',
+    $support . '/html-api/class-wp-html-decoder.php',
+    $support . '/html-api/class-wp-html-tag-processor.php',
+];
+foreach ($html_api_dependencies as $dependency) {
+    if (is_file($dependency)) {
+        require_once $dependency;
+    }
+}
 require $support . '/kses.php';
 
 // WordPress environment and WooCommerce read-only order/product test doubles.
@@ -36,17 +56,25 @@ class WC_Order_Item_Product {
     private static $next_id = 1;
     private $id;
     private $product;
+    private $product_id = 0;
+    private $variation_id = 0;
     private $name;
     private $meta = [];
     public function __construct($product, $name = 'Testmaskin') {
         $this->id = self::$next_id++;
         $this->product = $product;
         $this->name = $name;
+        if (is_object($product) && is_callable([$product, 'get_id'])) {
+            $parent_id = is_callable([$product, 'get_parent_id']) ? $product->get_parent_id() : 0;
+            $this->product_id = $parent_id ?: $product->get_id();
+            $this->variation_id = $parent_id ? $product->get_id() : 0;
+        }
     }
     public function get_id() { return $this->id; }
     public function get_product() { return $this->product; }
     public function set_product($product) { $this->product = $product; }
-    public function get_product_id() { return $this->product && is_callable([$this->product, 'get_id']) ? $this->product->get_id() : 0; }
+    public function get_product_id() { return $this->product_id; }
+    public function get_variation_id() { return $this->variation_id; }
     public function get_name() { return $this->name; }
     public function get_meta($key, $single = true) { return isset($this->meta[$key]) ? $this->meta[$key] : ''; }
     public function add_meta_data($key, $value, $unique = false) { $this->meta[$key] = $value; }
@@ -135,6 +163,20 @@ $snapshot_item->set_product(false);
 $snapshot_mail = render_test_email([$snapshot_item]);
 check(strpos($snapshot_mail, 'Original instructions') !== false, 'snapshot survives product edit and deletion');
 check(strpos($snapshot_mail, 'Changed instructions') === false, 'snapshot prevents later product content');
+
+// Deleted variations from the same parent must keep separate snapshot blocks.
+$deleted_variant_a_product = new Test_Product(16, '<p>Variant A instructions</p>', 15);
+$deleted_variant_b_product = new Test_Product(17, '<p>Variant B instructions</p>', 15);
+$deleted_variant_a = new WC_Order_Item_Product($deleted_variant_a_product, 'Deleted variant A');
+$deleted_variant_b = new WC_Order_Item_Product($deleted_variant_b_product, 'Deleted variant B');
+do_action('woocommerce_checkout_create_order_line_item', $deleted_variant_a, 'variant-a', ['data' => $deleted_variant_a_product], new WC_Order([]));
+do_action('woocommerce_checkout_create_order_line_item', $deleted_variant_b, 'variant-b', ['data' => $deleted_variant_b_product], new WC_Order([]));
+$deleted_variant_a->set_product(false);
+$deleted_variant_b->set_product(false);
+$deleted_variants_mail = render_test_email([$deleted_variant_a, $deleted_variant_b]);
+check(strpos($deleted_variants_mail, 'Variant A instructions') !== false, 'first deleted variation keeps its snapshot');
+check(strpos($deleted_variants_mail, 'Variant B instructions') !== false, 'second deleted variation keeps its snapshot');
+check(substr_count($deleted_variants_mail, 'class="trent-machine-information"') === 2, 'deleted variations from one parent remain distinct');
 
 // Empty information is also snapshotted, so later product edits do not rewrite history.
 $empty_snapshot_product = new Test_Product(13, '<p></p>');

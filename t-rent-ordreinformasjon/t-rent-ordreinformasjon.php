@@ -2,7 +2,7 @@
 /**
  * Plugin Name: T-Rent Ordreinformasjon
  * Description: Fast henteinformasjon i kundens ordrebekreftelse, med maskininfo når den finnes.
- * Version: 1.1.1
+ * Version: 1.1.2
  * Author: T-Rent
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce
@@ -156,6 +156,11 @@ if (!class_exists('TRent_Order_Email_Information', false)) {
 
         private static function item_deduplication_key($item, $product)
         {
+            // Keep variations distinct even if the variation product has later
+            // been deleted and can no longer be loaded from the order item.
+            if (is_callable([$item, 'get_variation_id']) && $item->get_variation_id()) {
+                return 'variation:' . $item->get_variation_id();
+            }
             if (is_object($product) && is_callable([$product, 'get_id']) && $product->get_id()) {
                 return 'product:' . $product->get_id();
             }

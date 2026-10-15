@@ -1,4 +1,4 @@
-# T-Rent Ordreinformasjon 1.1.1
+# T-Rent Ordreinformasjon 1.1.2
 
 Et komplett, separat WordPress-tillegg. Installer hele ZIP-filen via **Utvidelser → Legg til ny → Last opp utvidelse**, og aktiver **T-Rent Ordreinformasjon**. Det skal ikke limes inn i RnB, `functions.php` eller `Email.php`.
 
@@ -9,6 +9,8 @@ Den faste informasjonen legges inn før ordresammendraget i kundens WooCommerce-
 Produktenes `maskin_info` vises separat etter ordresammendraget når feltet finnes. Som tidligere vises maskininformasjon i både «under behandling» og «fullført». Variantprodukter arver informasjon fra hovedproduktet når variantfeltet er tomt eller bare inneholder tom HTML som `<p></p>` eller `&nbsp;`. HTML og ren tekst støttes.
 
 Fra versjon 1.1.0 lagres en privat kopi av `maskin_info` på nye ordrelinjer. Dermed viser en senere videresending eller «fullført»-mail den informasjonen som gjaldt da ordren ble opprettet, selv om produktet senere redigeres eller slettes. Eldre ordrer uten lagret kopi faller fortsatt tilbake til produktets nåværende informasjon.
+
+Fra versjon 1.1.2 skilles slettede produktvarianter på variasjons-ID. Dermed beholdes hver maskinblokk når flere slettede varianter tilhører samme hovedprodukt.
 
 Tillegget erstatter bare de kjente gamle callbackene `trent_processing_order_information` og `trent_vis_maskin_info_i_mail`, for å unngå doble blokker. Det endrer ikke pris, dato, betaling, depositum, kalender, ordrestatus, utsendingstriggere eller RnB-forespørsler. Det sender ikke e-post på egen hånd.
 
@@ -21,7 +23,7 @@ Tillegget erstatter bare de kjente gamle callbackene `trent_processing_order_inf
 
 ## Kontroll og installasjonsstatus
 
-Testfilen følger med ZIP-pakken under `tests/`. Den bruker ekte WordPress-hooks og formateringsfunksjoner samt testobjekter for WooCommerce-ordrer og produkter. Testen kontrollerer blant annet lagret maskininfo, slettede produkter, tom HTML på varianter, HTML/ren tekst, eldre ordrer og at ingen e-post sendes under testen.
+Testfilen følger med ZIP-pakken under `tests/`. Den bruker ekte WordPress-hooks og formateringsfunksjoner samt testobjekter for WooCommerce-ordrer og produkter. Testen laster også HTML API-avhengighetene som nyere WordPress-versjoner bruker i KSES. Den kontrollerer blant annet lagret maskininfo, slettede produkter og varianter, tom HTML på varianter, HTML/ren tekst, eldre ordrer og at ingen e-post sendes under testen.
 
 Kjør fra WordPress-installasjonens rotmappe:
 
