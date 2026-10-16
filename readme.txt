@@ -2,7 +2,7 @@
 Contributors: t-rent
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 2.3.0
+Stable tag: 2.4.0
 License: Proprietary
 
 Ett avgrenset WordPress-tillegg for T-Rents daglige utleiedrift.
@@ -14,6 +14,8 @@ Ett avgrenset WordPress-tillegg for T-Rents daglige utleiedrift.
 * Mobilvisning med faner for både utstyrskontroll og datoblokkering via samme sikre direktelenke.
 * Søk etter utstyr på navn, utstyrs-ID, status eller ordrenummer.
 * Søkbar utstyrsvelger ved manuell datoblokkering.
+* Synlige, lagrede kontrollnotater med dato, handling og registrert av.
+* Trygg skjuling av utstyr fra appen med bekreftelse og mulighet for gjenoppretting.
 * Installerbar mobilapp (PWA) med eget appikon og isolert service worker.
 
 == Avhengigheter ==
@@ -26,4 +28,4 @@ WooCommerce og WooCommerce Booking & Rental System (RnB) må allerede være inst
 
 == Sikker aktivering ==
 
-Tillegget oppretter ingen databasetabeller og endrer ingen priser, ordre, betalinger eller kundesider ved aktivering. En tilfeldig tilgangsnøkkel opprettes første gang en autorisert administrator åpner utstyrskontrollen. Utover dette lagres data bare når en autorisert bruker utfører en kontrollhandling eller legger til eller fjerner en manuell datoblokkering.
+Tillegget oppretter ingen databasetabeller og endrer ingen priser, ordre, betalinger eller kundesider ved aktivering. En tilfeldig tilgangsnøkkel opprettes første gang en autorisert administrator åpner utstyrskontrollen. Utover dette lagres data bare når en autorisert bruker utfører en kontrollhandling, skjuler eller gjenoppretter utstyr i appen, eller legger til eller fjerner en manuell datoblokkering. Skjuling i appen endrer ikke WooCommerce-produktet, kalenderen eller eksisterende bookinger.

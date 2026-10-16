@@ -37,6 +37,7 @@ final class Equipment_Control
     const SERVICE_AT_META        = '_t_rent_equipment_service_at';
     const SERVICE_BY_META        = '_t_rent_equipment_service_by';
     const SERVICE_NOTE_META      = '_t_rent_equipment_service_note';
+    const HIDDEN_META            = '_t_rent_equipment_hidden_in_app';
     const LOG_META               = '_t_rent_equipment_control_log';
 
     public function __construct()
@@ -66,7 +67,7 @@ final class Equipment_Control
     {
         $version = defined('T_RENT_ADMIN_APP_VERSION')
             ? T_RENT_ADMIN_APP_VERSION
-            : '2.3.0';
+            : '2.4.0';
 
         if ((string) get_option(self::REWRITE_VERSION_OPTION, '') === $version) {
             return;
@@ -286,7 +287,7 @@ final class Equipment_Control
     {
         $version = defined('T_RENT_ADMIN_APP_VERSION')
             ? T_RENT_ADMIN_APP_VERSION
-            : '2.3.0';
+            : '2.4.0';
 
         return "'use strict';\n"
             . 'const T_RENT_APP_VERSION = ' . wp_json_encode((string) $version) . ";\n"
@@ -326,7 +327,7 @@ final class Equipment_Control
     {
         $version = defined('T_RENT_ADMIN_APP_VERSION')
             ? T_RENT_ADMIN_APP_VERSION
-            : '2.3.0';
+            : '2.4.0';
 
         return add_query_arg(
             'version',
@@ -441,7 +442,7 @@ final class Equipment_Control
             : $this->public_url($token);
         $version = defined('T_RENT_ADMIN_APP_VERSION')
             ? T_RENT_ADMIN_APP_VERSION
-            : '2.3.0';
+            : '2.4.0';
 
         status_header(200);
         header('Content-Type: text/html; charset=' . get_bloginfo('charset'));
@@ -496,7 +497,7 @@ final class Equipment_Control
         $scope = self::app_base_url();
         $version = defined('T_RENT_ADMIN_APP_VERSION')
             ? T_RENT_ADMIN_APP_VERSION
-            : '2.3.0';
+            : '2.4.0';
         ?>
         <script>
             (function () {
@@ -610,7 +611,7 @@ final class Equipment_Control
         }
 
         echo '<style>';
-        echo '.tr-search{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:end;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin:0 0 18px}.tr-search-field label{display:block;font-size:13px;font-weight:700;margin:0 0 6px}.tr-search-field input{box-sizing:border-box;width:100%;min-height:44px;border:1px solid #9ca3af;border-radius:7px;background:#fff;color:#111827;font:inherit;padding:8px 11px}.tr-search-button{min-height:44px;border:0;border-radius:7px;background:#1d4ed8;color:#fff;cursor:pointer;font:inherit;font-weight:700;padding:9px 18px}.tr-search-clear{display:flex;align-items:center;min-height:44px;color:#1d4ed8;font-size:14px;font-weight:700;text-decoration:none;padding:0 6px}.tr-counts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:0 0 18px}.tr-count-link{display:block;color:inherit;text-decoration:none;border-radius:9px;outline:none}.tr-count{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:13px;transition:transform .12s ease,box-shadow .12s ease}.tr-count-link:active .tr-count{transform:scale(.98)}.tr-count-link:focus-visible .tr-count,.tr-count-active{box-shadow:0 0 0 3px rgba(37,99,235,.18)}.tr-count b{display:block;font-size:25px}.tr-count span{color:#6b7280;font-size:13px}.tr-filterbar{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px;margin:-6px 0 18px}.tr-filterbar strong{font-size:14px}.tr-filterbar a{font-size:14px;font-weight:700;color:#1d4ed8;text-decoration:none}.tr-table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden}.tr-table th,.tr-table td{text-align:left;padding:12px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top}.tr-table th{background:#f9fafb;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280}.tr-table tr:last-child td{border-bottom:0}.tr-badge{display:inline-block;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:700;white-space:nowrap}.tr-badge-pending{background:#fff7ed;color:#9a3412}.tr-badge-service{background:#f5f3ff;color:#6d28d9}.tr-badge-maintenance{background:#fef2f2;color:#991b1b}.tr-badge-out{background:#eff6ff;color:#1e40af}.tr-badge-ready{background:#ecfdf5;color:#065f46}.tr-small{font-size:12px;line-height:1.45;color:#6b7280}.tr-service-history{margin-top:14px;padding-top:12px;border-top:1px solid #e5e7eb}.tr-subhead{margin-bottom:4px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9ca3af}.tr-actions{min-width:310px}.tr-form{display:grid;grid-template-columns:minmax(120px,1fr) auto auto;gap:6px;align-items:center}.tr-form input[type=text]{min-width:0;border:1px solid #d1d5db;border-radius:6px;padding:8px}.tr-btn{border:0;border-radius:6px;padding:8px 10px;font-weight:700;cursor:pointer}.tr-ready{background:#047857;color:#fff}.tr-hold{background:#fee2e2;color:#991b1b}.tr-service{background:#ede9fe;color:#5b21b6}.tr-reset{background:#ffedd5;color:#9a3412}.tr-empty{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:28px;text-align:center;color:#6b7280}@media(max-width:800px){.tr-counts{grid-template-columns:repeat(2,minmax(0,1fr))}.tr-table,.tr-table tbody,.tr-table tr,.tr-table td{display:block}.tr-table thead{display:none}.tr-table tr{border-bottom:7px solid #f3f4f6;padding:7px 0}.tr-table td{border:0;padding:6px 12px}.tr-table td:before{content:attr(data-label);display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:2px}.tr-actions{min-width:0}.tr-form{grid-template-columns:1fr 1fr}.tr-form input[type=text]{grid-column:1/-1}.tr-form .tr-wide{grid-column:1/-1}}@media(max-width:560px){.tr-search{grid-template-columns:1fr 1fr}.tr-search-field{grid-column:1/-1}.tr-search-clear{justify-content:center}}';
+        echo '.tr-search{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:end;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin:0 0 18px}.tr-search-field label{display:block;font-size:13px;font-weight:700;margin:0 0 6px}.tr-search-field input{box-sizing:border-box;width:100%;min-height:44px;border:1px solid #9ca3af;border-radius:7px;background:#fff;color:#111827;font:inherit;padding:8px 11px}.tr-search-button{min-height:44px;border:0;border-radius:7px;background:#1d4ed8;color:#fff;cursor:pointer;font:inherit;font-weight:700;padding:9px 18px}.tr-search-clear{display:flex;align-items:center;min-height:44px;color:#1d4ed8;font-size:14px;font-weight:700;text-decoration:none;padding:0 6px}.tr-counts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:0 0 18px}.tr-count-link{display:block;color:inherit;text-decoration:none;border-radius:9px;outline:none}.tr-count{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:13px;transition:transform .12s ease,box-shadow .12s ease}.tr-count-link:active .tr-count{transform:scale(.98)}.tr-count-link:focus-visible .tr-count,.tr-count-active{box-shadow:0 0 0 3px rgba(37,99,235,.18)}.tr-count b{display:block;font-size:25px}.tr-count span{color:#6b7280;font-size:13px}.tr-filterbar{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px;margin:-6px 0 18px}.tr-filterbar strong{font-size:14px}.tr-filterbar a{font-size:14px;font-weight:700;color:#1d4ed8;text-decoration:none}.tr-table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden}.tr-table th,.tr-table td{text-align:left;padding:12px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top}.tr-table th{background:#f9fafb;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280}.tr-table tr:last-child td{border-bottom:0}.tr-badge{display:inline-block;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:700;white-space:nowrap}.tr-badge-pending{background:#fff7ed;color:#9a3412}.tr-badge-service{background:#f5f3ff;color:#6d28d9}.tr-badge-maintenance{background:#fef2f2;color:#991b1b}.tr-badge-out{background:#eff6ff;color:#1e40af}.tr-badge-ready{background:#ecfdf5;color:#065f46}.tr-small{font-size:12px;line-height:1.45;color:#6b7280}.tr-latest-note{background:#f9fafb;border-left:3px solid #9ca3af;border-radius:5px;margin-top:10px;padding:8px 9px}.tr-latest-note-text{font-size:13px;line-height:1.4;overflow-wrap:anywhere}.tr-service-history{margin-top:14px;padding-top:12px;border-top:1px solid #e5e7eb}.tr-subhead{margin-bottom:4px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9ca3af}.tr-actions{min-width:310px}.tr-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;align-items:center}.tr-note-field{grid-column:1/-1}.tr-note-field label{display:block;font-size:12px;font-weight:700;margin:0 0 5px}.tr-note-field textarea{box-sizing:border-box;width:100%;min-height:64px;resize:vertical;border:1px solid #9ca3af;border-radius:6px;font:inherit;padding:8px}.tr-btn{border:0;border-radius:6px;padding:8px 10px;font-weight:700;cursor:pointer}.tr-ready{background:#047857;color:#fff}.tr-hold{background:#fee2e2;color:#991b1b}.tr-service{background:#ede9fe;color:#5b21b6}.tr-reset{background:#ffedd5;color:#9a3412}.tr-hide-form{border-top:1px solid #e5e7eb;margin-top:10px;padding-top:10px}.tr-hide-button{width:100%;border:1px solid #fecaca;border-radius:6px;background:#fff;color:#991b1b;cursor:pointer;font:inherit;font-size:13px;font-weight:700;padding:8px 10px}.tr-hidden-equipment{background:#fff;border:1px solid #d1d5db;border-radius:9px;margin:18px 0 0;padding:12px}.tr-hidden-equipment summary{cursor:pointer;font-weight:700}.tr-hidden-row{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid #e5e7eb;margin-top:10px;padding-top:10px}.tr-restore-button{border:1px solid #bfdbfe;border-radius:6px;background:#eff6ff;color:#1e40af;cursor:pointer;font:inherit;font-weight:700;padding:8px 11px}.tr-empty{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:28px;text-align:center;color:#6b7280}@media(max-width:800px){.tr-counts{grid-template-columns:repeat(2,minmax(0,1fr))}.tr-table,.tr-table tbody,.tr-table tr,.tr-table td{display:block}.tr-table thead{display:none}.tr-table tr{border-bottom:7px solid #f3f4f6;padding:7px 0}.tr-table td{border:0;padding:6px 12px}.tr-table td:before{content:attr(data-label);display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:2px}.tr-actions{min-width:0}.tr-form{grid-template-columns:1fr 1fr}.tr-form .tr-wide{grid-column:1/-1}}@media(max-width:560px){.tr-search{grid-template-columns:1fr 1fr}.tr-search-field{grid-column:1/-1}.tr-search-clear{justify-content:center}.tr-hidden-row{align-items:stretch;flex-direction:column}.tr-restore-button{width:100%}}';
         echo '</style>';
 
         $this->render_search_form($public, $token, $filter, $search);
@@ -643,17 +644,20 @@ final class Equipment_Control
         }
 
         if (empty($rows)) {
-            echo '<div class="tr-empty">Ingen RnB-utstyr ble funnet.</div>';
+            echo '<div class="tr-empty">Ingen synlig RnB-utstyr ble funnet.</div>';
+            $this->render_hidden_equipment($public, $token, $filter, $search);
             return;
         }
 
         if (empty($searched_rows)) {
             echo '<div class="tr-empty">Ingen utstyr samsvarer med søket «' . esc_html($search) . '».</div>';
+            $this->render_hidden_equipment($public, $token, $filter, $search);
             return;
         }
 
         if (empty($visible_rows)) {
             echo '<div class="tr-empty">Ingen treff har denne statusen.</div>';
+            $this->render_hidden_equipment($public, $token, $filter, $search);
             return;
         }
 
@@ -675,6 +679,25 @@ final class Equipment_Control
             if ($row['reason'] !== '') {
                 echo '<div class="tr-small" style="margin-top:5px">' . esc_html($row['reason']) . '</div>';
             }
+            if ($row['latest_note'] !== '') {
+                $note_context = $row['latest_note_status'] !== ''
+                    ? $this->status_label($row['latest_note_status'])
+                    : 'Registrert notat';
+                echo '<div class="tr-latest-note">';
+                echo '<div class="tr-subhead">Siste notat · ' . esc_html($note_context) . '</div>';
+                echo '<div class="tr-latest-note-text">' . esc_html($row['latest_note']) . '</div>';
+                if ($row['latest_note_at'] !== '' || $row['latest_note_by'] !== '') {
+                    $note_meta = [];
+                    if ($row['latest_note_at'] !== '') {
+                        $note_meta[] = $this->format_datetime($row['latest_note_at']);
+                    }
+                    if ($row['latest_note_by'] !== '') {
+                        $note_meta[] = $row['latest_note_by'];
+                    }
+                    echo '<div class="tr-small" style="margin-top:4px">' . esc_html(implode(' · ', $note_meta)) . '</div>';
+                }
+                echo '</div>';
+            }
             echo '</td>';
             echo '<td data-label="Siste / pågående leie">' . $this->booking_summary($row, $public) . '</td>';
             echo '<td data-label="Sist kontrollert">';
@@ -682,9 +705,6 @@ final class Equipment_Control
                 echo '<strong>' . esc_html($this->format_datetime($row['checked_at'])) . '</strong>';
                 if ($row['checked_by'] !== '') {
                     echo '<div class="tr-small">av ' . esc_html($row['checked_by']) . '</div>';
-                }
-                if ($row['checked_note'] !== '') {
-                    echo '<div class="tr-small">' . esc_html($row['checked_note']) . '</div>';
                 }
             } else {
                 echo '<span class="tr-small">Ingen kontroll registrert</span>';
@@ -696,9 +716,6 @@ final class Equipment_Control
                 echo '<strong>' . esc_html($this->format_datetime($row['service_at'])) . '</strong>';
                 if ($row['service_by'] !== '') {
                     echo '<div class="tr-small">av ' . esc_html($row['service_by']) . '</div>';
-                }
-                if ($row['service_note'] !== '') {
-                    echo '<div class="tr-small">' . esc_html($row['service_note']) . '</div>';
                 }
             } else {
                 echo '<span class="tr-small">Ingen service registrert</span>';
@@ -714,6 +731,7 @@ final class Equipment_Control
 
         echo '</tbody></table>';
         echo '<p class="tr-small" style="margin:12px 2px 0">«Kontrollert og klar» må registreres etter fysisk kontroll. Etter neste WooCommerce-retur endres status automatisk til «Må kontrolleres». For Hygglo eller annen manuell utleie bruker du «Sett til kontroll» når utstyret kommer tilbake.</p>';
+        $this->render_hidden_equipment($public, $token, $filter, $search);
     }
 
     private function render_search_form($public, $token, $filter, $search)
@@ -792,6 +810,7 @@ final class Equipment_Control
             isset($row['checked_note']) ? $row['checked_note'] : '',
             isset($row['service_by']) ? $row['service_by'] : '',
             isset($row['service_note']) ? $row['service_note'] : '',
+            isset($row['latest_note']) ? $row['latest_note'] : '',
         ];
 
         foreach (['last_returned', 'active_booking', 'next_booking'] as $booking_key) {
@@ -890,7 +909,10 @@ final class Equipment_Control
             wp_nonce_field('t_rent_equipment_control_' . $inventory_id);
         }
 
-        echo '<input type="text" name="t_rent_control_note" maxlength="240" placeholder="Kort notat (valgfritt)">';
+        echo '<div class="tr-note-field">';
+        echo '<label for="t-rent-control-note-' . esc_attr($inventory_id) . '">Notat (valgfritt)</label>';
+        echo '<textarea id="t-rent-control-note-' . esc_attr($inventory_id) . '" name="t_rent_control_note" maxlength="240" placeholder="Skriv notatet her. Det lagres når du velger en handling."></textarea>';
+        echo '</div>';
 
         if ($status !== 'ready') {
             echo '<button class="tr-btn tr-ready" type="submit" name="t_rent_control_action" value="ready">Kontrollert – klar</button>';
@@ -911,6 +933,62 @@ final class Equipment_Control
         }
 
         echo '</form>';
+
+        echo '<form method="post" action="' . esc_url($action_url) . '" class="tr-hide-form" onsubmit="return confirm(\'Er du sikker på at du vil ta bort dette utstyret fra appen? Produktet på nettsiden blir ikke slettet.\');">';
+        echo '<input type="hidden" name="t_rent_control_inventory_id" value="' . esc_attr($inventory_id) . '">';
+        if ($filter !== '') {
+            echo '<input type="hidden" name="t_rent_return_status" value="' . esc_attr($filter) . '">';
+        }
+        if ($search !== '') {
+            echo '<input type="hidden" name="t_rent_return_search" value="' . esc_attr($search) . '">';
+        }
+        if ($public) {
+            echo '<input type="hidden" name="t_rent_control_signature" value="' . esc_attr($this->action_signature($inventory_id, $token)) . '">';
+        } else {
+            wp_nonce_field('t_rent_equipment_control_' . $inventory_id);
+        }
+        echo '<button class="tr-hide-button" type="submit" name="t_rent_control_action" value="hide">Ta bort fra appen</button>';
+        echo '</form>';
+    }
+
+    private function render_hidden_equipment($public, $token, $filter, $search)
+    {
+        $hidden_rows = $this->hidden_equipment_rows();
+        if (empty($hidden_rows)) {
+            return;
+        }
+
+        $action_url = $public
+            ? $this->public_url($token)
+            : admin_url('admin.php?page=' . self::PAGE_SLUG);
+
+        echo '<details class="tr-hidden-equipment">';
+        echo '<summary>Skjult utstyr (' . esc_html(count($hidden_rows)) . ')</summary>';
+        echo '<p class="tr-small">Dette utstyret er bare skjult fra appen. Produkt, kalender og bookinger er ikke endret.</p>';
+
+        foreach ($hidden_rows as $row) {
+            $inventory_id = (int) $row['inventory_id'];
+            echo '<div class="tr-hidden-row">';
+            echo '<div><strong>' . esc_html($row['name']) . '</strong><div class="tr-small">Utstyrs-ID: #' . esc_html($inventory_id) . '</div></div>';
+            echo '<form method="post" action="' . esc_url($action_url) . '">';
+            echo '<input type="hidden" name="t_rent_control_inventory_id" value="' . esc_attr($inventory_id) . '">';
+            if ($filter !== '') {
+                echo '<input type="hidden" name="t_rent_return_status" value="' . esc_attr($filter) . '">';
+            }
+            if ($search !== '') {
+                echo '<input type="hidden" name="t_rent_return_search" value="' . esc_attr($search) . '">';
+            }
+            if ($public) {
+                echo '<input type="hidden" name="t_rent_control_signature" value="' . esc_attr($this->action_signature($inventory_id, $token)) . '">';
+            } else {
+                wp_nonce_field('t_rent_equipment_control_' . $inventory_id);
+            }
+            echo '<button class="tr-restore-button" type="submit" name="t_rent_control_action" value="restore">Vis igjen</button>';
+            echo '</form>';
+            echo '</div>';
+        }
+
+        echo '</details>';
     }
 
     private function booking_summary($row, $public)
@@ -977,28 +1055,57 @@ final class Equipment_Control
 
         foreach ($inventories as $inventory) {
             $inventory_id = (int) $inventory->ID;
+            if ((string) get_post_meta($inventory_id, self::HIDDEN_META, true) === '1') {
+                continue;
+            }
+
             $stored_status = (string) get_post_meta($inventory_id, self::STATUS_META, true);
             $checked_at = (string) get_post_meta($inventory_id, self::CHECKED_AT_META, true);
+            $checked_by = (string) get_post_meta($inventory_id, self::CHECKED_BY_META, true);
+            $checked_note = (string) get_post_meta($inventory_id, self::CHECKED_NOTE_META, true);
             $checked_through = (int) get_post_meta($inventory_id, self::CHECKED_THROUGH_META, true);
             $service_at = (string) get_post_meta($inventory_id, self::SERVICE_AT_META, true);
             $service_by = (string) get_post_meta($inventory_id, self::SERVICE_BY_META, true);
             $service_note = (string) get_post_meta($inventory_id, self::SERVICE_NOTE_META, true);
+            $latest_note = '';
+            $latest_note_at = '';
+            $latest_note_by = '';
+            $latest_note_status = '';
+            $log = get_post_meta($inventory_id, self::LOG_META, true);
 
-            // Backward compatibility for service actions recorded before v1.0.3.
-            if ($service_at === '') {
-                $log = get_post_meta($inventory_id, self::LOG_META, true);
-                if (is_array($log)) {
-                    foreach ($log as $entry) {
-                        if (!is_array($entry) || ($entry['status'] ?? '') !== 'service') {
-                            continue;
-                        }
+            if (is_array($log)) {
+                foreach ($log as $entry) {
+                    if (!is_array($entry)) {
+                        continue;
+                    }
 
+                    $entry_note = isset($entry['note']) ? trim((string) $entry['note']) : '';
+                    if ($latest_note === '' && $entry_note !== '') {
+                        $latest_note = $entry_note;
+                        $latest_note_at = isset($entry['at']) ? (string) $entry['at'] : '';
+                        $latest_note_by = isset($entry['by']) ? (string) $entry['by'] : '';
+                        $latest_note_status = isset($entry['status']) ? sanitize_key($entry['status']) : '';
+                    }
+
+                    // Backward compatibility for service actions recorded before v1.0.3.
+                    if ($service_at === '' && ($entry['status'] ?? '') === 'service') {
                         $service_at = isset($entry['at']) ? (string) $entry['at'] : '';
                         $service_by = isset($entry['by']) ? (string) $entry['by'] : '';
                         $service_note = isset($entry['note']) ? (string) $entry['note'] : '';
-                        break;
                     }
                 }
+            }
+
+            if ($latest_note === '' && trim($service_note) !== '') {
+                $latest_note = trim($service_note);
+                $latest_note_at = $service_at;
+                $latest_note_by = $service_by;
+                $latest_note_status = 'service';
+            } elseif ($latest_note === '' && trim($checked_note) !== '') {
+                $latest_note = trim($checked_note);
+                $latest_note_at = $checked_at;
+                $latest_note_by = $checked_by;
+                $latest_note_status = $stored_status;
             }
 
             $schedule = isset($bookings[$inventory_id]) ? $bookings[$inventory_id] : $this->empty_schedule();
@@ -1036,11 +1143,15 @@ final class Equipment_Control
                 'display_status' => $display_status,
                 'reason'         => $reason,
                 'checked_at'     => $checked_at,
-                'checked_by'     => (string) get_post_meta($inventory_id, self::CHECKED_BY_META, true),
-                'checked_note'   => (string) get_post_meta($inventory_id, self::CHECKED_NOTE_META, true),
+                'checked_by'     => $checked_by,
+                'checked_note'   => $checked_note,
                 'service_at'     => $service_at,
                 'service_by'     => $service_by,
                 'service_note'   => $service_note,
+                'latest_note'    => $latest_note,
+                'latest_note_at' => $latest_note_at,
+                'latest_note_by' => $latest_note_by,
+                'latest_note_status' => $latest_note_status,
                 'last_returned'  => $schedule['last_returned'],
                 'active_booking' => $schedule['active_booking'],
                 'next_booking'   => $schedule['next_booking'],
@@ -1060,6 +1171,39 @@ final class Equipment_Control
                 return $b['sort_return'] - $a['sort_return'];
             }
 
+            return strcasecmp($a['name'], $b['name']);
+        });
+
+        return $rows;
+    }
+
+    private function hidden_equipment_rows()
+    {
+        $inventories = get_posts([
+            'post_type'      => 'inventory',
+            'post_status'    => ['publish', 'private'],
+            'posts_per_page' => -1,
+            'orderby'        => 'title',
+            'order'          => 'ASC',
+        ]);
+        $rows = [];
+
+        foreach ((array) $inventories as $inventory) {
+            $inventory_id = isset($inventory->ID) ? (int) $inventory->ID : 0;
+            if (
+                $inventory_id <= 0 ||
+                (string) get_post_meta($inventory_id, self::HIDDEN_META, true) !== '1'
+            ) {
+                continue;
+            }
+
+            $rows[] = [
+                'inventory_id' => $inventory_id,
+                'name'         => $this->equipment_name($inventory),
+            ];
+        }
+
+        usort($rows, static function ($a, $b) {
             return strcasecmp($a['name'], $b['name']);
         });
 
@@ -1364,7 +1508,7 @@ final class Equipment_Control
             return 'Kunne ikke finne utstyret.';
         }
 
-        if (!in_array($action, ['ready', 'pending', 'service', 'maintenance'], true)) {
+        if (!in_array($action, ['ready', 'pending', 'service', 'maintenance', 'hide', 'restore'], true)) {
             return 'Ugyldig kontrollstatus.';
         }
 
@@ -1389,6 +1533,27 @@ final class Equipment_Control
             ? sanitize_text_field(wp_unslash($_POST['t_rent_control_note']))
             : '';
         $now_mysql = wp_date('c');
+
+        if ($action === 'hide' || $action === 'restore') {
+            if ($action === 'hide') {
+                update_post_meta($inventory_id, self::HIDDEN_META, '1');
+                $message = get_the_title($inventory_id) . ' er skjult fra appen. Produktet på nettsiden er ikke endret.';
+            } else {
+                delete_post_meta($inventory_id, self::HIDDEN_META);
+                $message = get_the_title($inventory_id) . ' vises i appen igjen.';
+            }
+
+            $this->append_log($inventory_id, [
+                'status'         => $action === 'hide' ? 'hidden' : 'restored',
+                'at'             => $now_mysql,
+                'by'             => $actor,
+                'note'           => '',
+                'covered_return' => (int) get_post_meta($inventory_id, self::CHECKED_THROUGH_META, true),
+            ]);
+
+            return $message;
+        }
+
         $covered_return = (int) get_post_meta($inventory_id, self::CHECKED_THROUGH_META, true);
 
         if ($action === 'ready') {
@@ -1424,6 +1589,10 @@ final class Equipment_Control
             update_post_meta($inventory_id, self::CHECKED_BY_META, $actor);
             update_post_meta($inventory_id, self::CHECKED_NOTE_META, $note);
             $message = get_the_title($inventory_id) . ' er satt til kontroll.';
+        }
+
+        if ($note !== '') {
+            $message .= ' Notatet er lagret.';
         }
 
         $this->append_log($inventory_id, [

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: T-Rent Admin App
  * Description: Utstyrskontroll og manuell datoblokkering for T-Rents RnB-utleie.
- * Version: 2.3.0
+ * Version: 2.4.0
  * Author: T-Rent
  * Requires at least: 6.0
  * Requires PHP: 7.4
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 if (!defined('T_RENT_ADMIN_APP_VERSION')) {
-    define('T_RENT_ADMIN_APP_VERSION', '2.3.0');
+    define('T_RENT_ADMIN_APP_VERSION', '2.4.0');
 }
 if (!defined('T_RENT_ADMIN_APP_FILE')) {
     define('T_RENT_ADMIN_APP_FILE', __FILE__);
