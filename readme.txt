@@ -2,7 +2,7 @@
 Contributors: t-rent
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 2.0.0
+Stable tag: 2.1.0
 License: Proprietary
 
 Ett avgrenset WordPress-tillegg for T-Rents daglige utleiedrift.
@@ -11,6 +11,7 @@ Ett avgrenset WordPress-tillegg for T-Rents daglige utleiedrift.
 
 * Utstyrskontroll etter utleie, inkludert status for kontroll, service og vedlikehold.
 * Manuell blokkering og fjerning av utleiedatoer i RnB.
+* Mobilvisning med faner for både utstyrskontroll og datoblokkering via samme sikre direktelenke.
 
 == Avhengigheter ==
 

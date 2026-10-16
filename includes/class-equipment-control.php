@@ -105,6 +105,10 @@ final class Equipment_Control
             exit('Utstyrskontrollen er midlertidig utilgjengelig.');
         }
 
+        if (Date_Blocker::is_public_post()) {
+            Date_Blocker::handle_public_action($token);
+        }
+
         if ($this->is_status_post()) {
             $message = $this->handle_status_action(true, $token);
             wp_safe_redirect(add_query_arg('t_rent_notice', $message, $this->public_url($token)));
@@ -183,6 +187,12 @@ final class Equipment_Control
 
     private function render_document($message, $public, $token)
     {
+        $calendar_view = Date_Blocker::is_public_view();
+        $page_title = $calendar_view ? 'Blokker dato' : 'Utstyrskontroll';
+        $refresh_url = $calendar_view
+            ? Date_Blocker::public_url($token)
+            : $this->public_url($token);
+
         status_header(200);
         header('Content-Type: text/html; charset=' . get_bloginfo('charset'));
 
@@ -190,17 +200,29 @@ final class Equipment_Control
         echo '<meta charset="' . esc_attr(get_bloginfo('charset')) . '">';
         echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
         echo '<meta name="robots" content="noindex,nofollow,noarchive">';
-        echo '<title>Utstyrskontroll – T-Rent</title>';
+        echo '<title>' . esc_html($page_title) . ' – T-Rent</title>';
         echo '</head><body style="margin:0;background:#f3f4f6;color:#111827;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif">';
         echo '<main style="max-width:1180px;margin:0 auto;padding:20px 14px 48px">';
         echo '<header style="display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:18px">';
         echo '<div><div style="font-size:13px;font-weight:700;letter-spacing:.08em;color:#6b7280">T-RENT</div>';
-        echo '<h1 style="font-size:28px;line-height:1.15;margin:4px 0">Utstyrskontroll</h1>';
+        echo '<h1 style="font-size:28px;line-height:1.15;margin:4px 0">' . esc_html($page_title) . '</h1>';
         echo '<div style="color:#6b7280">Sist oppdatert ' . esc_html(wp_date('d.m.Y H:i')) . '</div></div>';
-        echo '<a href="' . esc_url($this->public_url($token)) . '" style="color:#1d4ed8;text-decoration:none;font-weight:600">Oppdater</a>';
+        echo '<a href="' . esc_url($refresh_url) . '" style="color:#1d4ed8;text-decoration:none;font-weight:600">Oppdater</a>';
         echo '</header>';
 
-        $this->render_dashboard($message, $public, $token);
+        echo '<style>';
+        echo '.tr-app-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#e5e7eb;border-radius:10px;padding:4px;margin:0 0 18px}.tr-app-tab{display:block;border-radius:7px;color:#4b5563;font-size:14px;font-weight:700;padding:11px 10px;text-align:center;text-decoration:none}.tr-app-tab-active{background:#fff;color:#111827;box-shadow:0 1px 2px rgba(0,0,0,.08)}';
+        echo '</style>';
+        echo '<nav class="tr-app-tabs" aria-label="T-Rent administrasjon">';
+        echo '<a class="tr-app-tab' . ($calendar_view ? '' : ' tr-app-tab-active') . '" href="' . esc_url($this->public_url($token)) . '">Utstyrskontroll</a>';
+        echo '<a class="tr-app-tab' . ($calendar_view ? ' tr-app-tab-active' : '') . '" href="' . esc_url(Date_Blocker::public_url($token)) . '">Blokker dato</a>';
+        echo '</nav>';
+
+        if ($calendar_view) {
+            Date_Blocker::render_public($token);
+        } else {
+            $this->render_dashboard($message, $public, $token);
+        }
 
         echo '</main></body></html>';
     }
@@ -985,15 +1007,17 @@ final class Equipment_Control
     {
         return isset($_SERVER['REQUEST_METHOD'])
             && strtoupper((string) $_SERVER['REQUEST_METHOD']) === 'POST'
-            && !empty($_POST['t_rent_control_action']);
+            && isset($_POST['t_rent_control_action'])
+            && is_scalar($_POST['t_rent_control_action'])
+            && $_POST['t_rent_control_action'] !== '';
     }
 
     private function request_token()
     {
-        if (isset($_GET[self::PUBLIC_TOKEN_PARAM])) {
+        if (isset($_GET[self::PUBLIC_TOKEN_PARAM]) && is_scalar($_GET[self::PUBLIC_TOKEN_PARAM])) {
             return (string) wp_unslash($_GET[self::PUBLIC_TOKEN_PARAM]);
         }
-        if (isset($_POST[self::PUBLIC_TOKEN_PARAM])) {
+        if (isset($_POST[self::PUBLIC_TOKEN_PARAM]) && is_scalar($_POST[self::PUBLIC_TOKEN_PARAM])) {
             return (string) wp_unslash($_POST[self::PUBLIC_TOKEN_PARAM]);
         }
         return '';

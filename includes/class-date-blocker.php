@@ -11,7 +11,10 @@ if (!defined('ABSPATH')) {
 
 final class Date_Blocker
 {
-    const PAGE_SLUG = 't-rent-datoblokkering';
+    const PAGE_SLUG          = 't-rent-datoblokkering';
+    const PUBLIC_VIEW_PARAM  = 't_rent_view';
+    const PUBLIC_VIEW_VALUE  = 'calendar';
+    const PUBLIC_ACTION_NAME = 't_rent_date_action';
 
     public static function init()
     {
@@ -44,6 +47,99 @@ final class Date_Blocker
             'title' => 'Blokker dato',
             'href'  => admin_url('admin.php?page=' . self::PAGE_SLUG),
         ]);
+    }
+
+    public static function is_public_view()
+    {
+        $view = isset($_GET[self::PUBLIC_VIEW_PARAM]) && is_scalar($_GET[self::PUBLIC_VIEW_PARAM])
+            ? sanitize_key(wp_unslash($_GET[self::PUBLIC_VIEW_PARAM]))
+            : '';
+
+        return $view === self::PUBLIC_VIEW_VALUE;
+    }
+
+    public static function is_public_post()
+    {
+        return isset($_SERVER['REQUEST_METHOD'])
+            && strtoupper((string) $_SERVER['REQUEST_METHOD']) === 'POST'
+            && isset($_POST[self::PUBLIC_ACTION_NAME])
+            && is_scalar($_POST[self::PUBLIC_ACTION_NAME])
+            && $_POST[self::PUBLIC_ACTION_NAME] !== '';
+    }
+
+    public static function public_url($token)
+    {
+        return add_query_arg(
+            [
+                Equipment_Control::PUBLIC_QUERY_VAR   => '1',
+                Equipment_Control::PUBLIC_TOKEN_PARAM => $token,
+                self::PUBLIC_VIEW_PARAM                => self::PUBLIC_VIEW_VALUE,
+            ],
+            home_url('/')
+        );
+    }
+
+    public static function handle_public_action($token)
+    {
+        $action = isset($_POST[self::PUBLIC_ACTION_NAME]) && is_scalar($_POST[self::PUBLIC_ACTION_NAME])
+            ? sanitize_key(wp_unslash($_POST[self::PUBLIC_ACTION_NAME]))
+            : '';
+        $provided_signature = isset($_POST['t_rent_date_signature']) && is_scalar($_POST['t_rent_date_signature'])
+            ? (string) wp_unslash($_POST['t_rent_date_signature'])
+            : '';
+
+        if ($action === 'add') {
+            $expected_signature = self::public_signature('add', '', $token);
+            if (!hash_equals($expected_signature, $provided_signature)) {
+                self::redirect_public_with_status('security_error', 0, $token);
+            }
+
+            $product_id = isset($_POST['product_id']) && is_scalar($_POST['product_id'])
+                ? absint($_POST['product_id'])
+                : 0;
+            $from_value = isset($_POST['from_date']) ? $_POST['from_date'] : '';
+            $to_value = isset($_POST['to_date']) ? $_POST['to_date'] : '';
+            $result = self::create_block($product_id, $from_value, $to_value);
+            self::redirect_public_with_status($result['status'], $result['count'], $token);
+        }
+
+        if ($action === 'remove') {
+            $raw_ids = isset($_POST['block_ids']) && is_scalar($_POST['block_ids'])
+                ? sanitize_text_field(wp_unslash($_POST['block_ids']))
+                : '';
+            $expected_signature = self::public_signature('remove', $raw_ids, $token);
+            if (!hash_equals($expected_signature, $provided_signature)) {
+                self::redirect_public_with_status('security_error', 0, $token);
+            }
+
+            $result = self::remove_blocks($raw_ids);
+            self::redirect_public_with_status($result['status'], $result['count'], $token);
+        }
+
+        self::redirect_public_with_status('invalid_action', 0, $token);
+    }
+
+    private static function public_signature($action, $value, $token)
+    {
+        return hash_hmac(
+            'sha256',
+            'date-block|' . sanitize_key($action) . '|' . (string) $value,
+            (string) $token
+        );
+    }
+
+    private static function redirect_public_with_status($status, $count, $token)
+    {
+        $url = add_query_arg(
+            [
+                'trent_block_status' => sanitize_key($status),
+                'trent_block_count'  => absint($count),
+            ],
+            self::public_url($token)
+        );
+
+        wp_safe_redirect($url);
+        exit;
     }
 
     private static function availability_table()
@@ -87,6 +183,10 @@ final class Date_Blocker
 
     private static function parse_date($value)
     {
+        if (!is_scalar($value)) {
+            return false;
+        }
+
         $value = sanitize_text_field(wp_unslash($value));
         $timezone = wp_timezone();
 
@@ -209,29 +309,39 @@ final class Date_Blocker
 
         check_admin_referer('trent_add_date_block');
 
-        $product_id = isset($_POST['product_id']) ? absint($_POST['product_id']) : 0;
+        $product_id = isset($_POST['product_id']) && is_scalar($_POST['product_id'])
+            ? absint($_POST['product_id'])
+            : 0;
         $from_value = isset($_POST['from_date']) ? $_POST['from_date'] : '';
         $to_value   = isset($_POST['to_date']) ? $_POST['to_date'] : '';
 
+        $result = self::create_block($product_id, $from_value, $to_value);
+        self::redirect_with_status($result['status'], $result['count']);
+    }
+
+    private static function create_block($product_id, $from_value, $to_value)
+    {
+        $product_id = absint($product_id);
+
         if (!self::is_rental_product($product_id)) {
-            self::redirect_with_status('invalid_product');
+            return self::result('invalid_product');
         }
 
         $from = self::parse_date($from_value);
         $to   = self::parse_date($to_value);
 
         if (!$from || !$to || $to < $from) {
-            self::redirect_with_status('invalid_date');
+            return self::result('invalid_date');
         }
 
         $table = self::availability_table();
         if (!self::table_exists($table)) {
-            self::redirect_with_status('rnb_missing');
+            return self::result('rnb_missing');
         }
 
         $inventory_ids = self::get_product_inventories($product_id);
         if (empty($inventory_ids)) {
-            self::redirect_with_status('no_inventory');
+            return self::result('no_inventory');
         }
 
         /*
@@ -335,16 +445,16 @@ final class Date_Blocker
                 }
             }
 
-            self::redirect_with_status('database_error');
+            return self::result('database_error');
         }
 
         if ($created === 0) {
-            self::redirect_with_status('already_exists');
+            return self::result('already_exists');
         }
 
         self::purge_product_cache($product_id);
 
-        self::redirect_with_status('added', $created);
+        return self::result('added', $created);
     }
 
     public static function handle_remove_block()
@@ -356,8 +466,17 @@ final class Date_Blocker
         check_admin_referer('trent_remove_date_block');
 
         $raw_ids = isset($_POST['block_ids'])
+            && is_scalar($_POST['block_ids'])
             ? sanitize_text_field(wp_unslash($_POST['block_ids']))
             : '';
+
+        $result = self::remove_blocks($raw_ids);
+        self::redirect_with_status($result['status'], $result['count']);
+    }
+
+    private static function remove_blocks($raw_ids)
+    {
+        $raw_ids = is_scalar($raw_ids) ? (string) $raw_ids : '';
 
         $ids = array_values(
             array_unique(
@@ -368,12 +487,12 @@ final class Date_Blocker
         );
 
         if (empty($ids)) {
-            self::redirect_with_status('invalid_block');
+            return self::result('invalid_block');
         }
 
         $table = self::availability_table();
         if (!self::table_exists($table)) {
-            self::redirect_with_status('rnb_missing');
+            return self::result('rnb_missing');
         }
 
         global $wpdb;
@@ -386,6 +505,7 @@ final class Date_Blocker
                      FROM {$table}
                      WHERE id = %d
                        AND block_by = 'CUSTOM'
+                       AND delete_status = 0
                      LIMIT 1",
                     $id
                 )
@@ -411,6 +531,7 @@ final class Date_Blocker
                 [
                     'id'       => $id,
                     'block_by' => 'CUSTOM',
+                    'delete_status' => 0,
                 ],
                 [
                     '%d',
@@ -419,6 +540,7 @@ final class Date_Blocker
                 [
                     '%d',
                     '%s',
+                    '%d',
                 ]
             );
 
@@ -433,7 +555,15 @@ final class Date_Blocker
             }
         }
 
-        self::redirect_with_status($removed > 0 ? 'removed' : 'invalid_block', $removed);
+        return self::result($removed > 0 ? 'removed' : 'invalid_block', $removed);
+    }
+
+    private static function result($status, $count = 0)
+    {
+        return [
+            'status' => sanitize_key($status),
+            'count'  => absint($count),
+        ];
     }
 
     private static function get_active_blocks()
@@ -496,16 +626,15 @@ final class Date_Blocker
         }
     }
 
-    private static function render_status_notice()
+    private static function requested_status()
     {
-        $status = isset($_GET['trent_block_status'])
+        return isset($_GET['trent_block_status']) && is_scalar($_GET['trent_block_status'])
             ? sanitize_key(wp_unslash($_GET['trent_block_status']))
             : '';
+    }
 
-        if (!$status) {
-            return;
-        }
-
+    private static function status_message($status)
+    {
         $messages = [
             'added'          => ['success', 'Datoen er blokkert. Den blir rød og kan ikke bookes.'],
             'removed'        => ['success', 'Blokkeringen er fjernet. Datoen er tilgjengelig igjen dersom ingen booking blokkerer den.'],
@@ -516,19 +645,226 @@ final class Date_Blocker
             'rnb_missing'    => ['error', 'RnB-tabellen ble ikke funnet. Kontroller at WooCommerce Booking & Rental System er aktivert.'],
             'invalid_block'  => ['error', 'Blokkeringen kunne ikke fjernes.'],
             'database_error' => ['error', 'Blokkeringen kunne ikke lagres. Ingen delvis blokkering ble beholdt.'],
+            'security_error' => ['error', 'Sikkerhetskontrollen feilet. Oppdater siden og prøv igjen.'],
+            'invalid_action' => ['error', 'Handlingen ble ikke gjenkjent. Oppdater siden og prøv igjen.'],
         ];
 
-        if (!isset($messages[$status])) {
+        return isset($messages[$status]) ? $messages[$status] : null;
+    }
+
+    private static function render_status_notice()
+    {
+        $notice = self::status_message(self::requested_status());
+        if (!$notice) {
             return;
         }
 
-        [$type, $message] = $messages[$status];
+        [$type, $message] = $notice;
 
         printf(
             '<div class="notice notice-%1$s is-dismissible"><p>%2$s</p></div>',
             esc_attr($type),
             esc_html($message)
         );
+    }
+
+    public static function render_public($token)
+    {
+        $rnb_ready = defined('RNB_VERSION') && self::table_exists(self::availability_table());
+        $products = self::get_rental_products();
+        $blocks = self::get_active_blocks();
+        $today = wp_date('Y-m-d');
+        $can_block = $rnb_ready && !empty($products);
+        $action_url = self::public_url($token);
+        $notice = self::status_message(self::requested_status());
+        ?>
+        <style>
+            .tr-date-notice{border:1px solid;border-radius:9px;padding:12px 14px;margin:0 0 16px;font-weight:600}
+            .tr-date-notice-success{background:#ecfdf5;border-color:#6ee7b7;color:#065f46}
+            .tr-date-notice-warning{background:#fffbeb;border-color:#fcd34d;color:#92400e}
+            .tr-date-notice-error{background:#fef2f2;border-color:#fca5a5;color:#991b1b}
+            .tr-date-card{background:#fff;border:1px solid #e5e7eb;border-radius:11px;padding:18px;margin:0 0 16px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+            .tr-date-card h2{font-size:20px;margin:0 0 8px}
+            .tr-date-description{color:#6b7280;line-height:1.5;margin:0 0 16px}
+            .tr-date-grid{display:grid;grid-template-columns:minmax(220px,2fr) minmax(145px,1fr) minmax(145px,1fr) auto;gap:12px;align-items:end}
+            .tr-date-field label{display:block;font-size:13px;font-weight:700;margin:0 0 6px}
+            .tr-date-field select,.tr-date-field input[type=date]{box-sizing:border-box;width:100%;min-height:44px;border:1px solid #d1d5db;border-radius:7px;background:#fff;color:#111827;font:inherit;padding:8px 10px}
+            .tr-date-button{min-height:44px;border:0;border-radius:7px;background:#1d4ed8;color:#fff;font:inherit;font-weight:700;padding:9px 18px;cursor:pointer}
+            .tr-date-button:disabled{background:#9ca3af;cursor:not-allowed}
+            .tr-date-list{display:grid;gap:10px;margin-top:14px}
+            .tr-date-row{display:grid;grid-template-columns:minmax(180px,1fr) auto auto auto;gap:14px;align-items:center;border:1px solid #e5e7eb;border-radius:9px;padding:12px}
+            .tr-date-period{white-space:nowrap}
+            .tr-date-label{display:block;color:#9ca3af;font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:2px}
+            .tr-date-remove{border:1px solid #fecaca;border-radius:7px;background:#fff;color:#991b1b;font:inherit;font-weight:700;padding:8px 12px;cursor:pointer}
+            .tr-date-empty{color:#6b7280;margin:12px 0 2px}
+            .tr-date-error{background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;border-radius:9px;padding:12px 14px;margin:0 0 16px}
+            @media(max-width:760px){.tr-date-grid{grid-template-columns:1fr 1fr}.tr-date-product,.tr-date-submit{grid-column:1/-1}.tr-date-button{width:100%}.tr-date-row{grid-template-columns:1fr 1fr}.tr-date-product-name,.tr-date-remove-form{grid-column:1/-1}.tr-date-remove{width:100%}}
+            @media(max-width:440px){.tr-date-card{padding:14px}.tr-date-grid{grid-template-columns:1fr}.tr-date-product,.tr-date-submit{grid-column:auto}.tr-date-row{grid-template-columns:1fr}.tr-date-product-name,.tr-date-remove-form{grid-column:auto}}
+        </style>
+
+        <?php if ($notice) : ?>
+            <div class="tr-date-notice tr-date-notice-<?php echo esc_attr($notice[0]); ?>">
+                <?php echo esc_html($notice[1]); ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if (!$rnb_ready) : ?>
+            <div class="tr-date-error">
+                <strong>Kalenderen er ikke tilgjengelig.</strong>
+                RnB må være aktivert før datoer kan blokkeres.
+            </div>
+        <?php endif; ?>
+
+        <section class="tr-date-card">
+            <h2>Marker utstyr som opptatt</h2>
+            <p class="tr-date-description">
+                Velg utstyr og dato. Samme dato i begge felt markerer én hel dag som opptatt i bookingkalenderen.
+            </p>
+
+            <?php if ($rnb_ready && empty($products)) : ?>
+                <div class="tr-date-error">Fant ingen utleieprodukter som kan blokkeres.</div>
+            <?php endif; ?>
+
+            <form method="post" action="<?php echo esc_url($action_url); ?>">
+                <input type="hidden" name="<?php echo esc_attr(self::PUBLIC_ACTION_NAME); ?>" value="add">
+                <input
+                    type="hidden"
+                    name="t_rent_date_signature"
+                    value="<?php echo esc_attr(self::public_signature('add', '', $token)); ?>"
+                >
+
+                <div class="tr-date-grid">
+                    <div class="tr-date-field tr-date-product">
+                        <label for="trent-public-product-id">Utstyr</label>
+                        <select
+                            id="trent-public-product-id"
+                            name="product_id"
+                            required
+                            <?php echo $can_block ? '' : 'disabled'; ?>
+                        >
+                            <option value="">Velg utstyr</option>
+                            <?php foreach ($products as $product_id) : ?>
+                                <option value="<?php echo esc_attr($product_id); ?>">
+                                    <?php echo esc_html(get_the_title($product_id)); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="tr-date-field">
+                        <label for="trent-public-from-date">Fra og med</label>
+                        <input
+                            type="date"
+                            id="trent-public-from-date"
+                            name="from_date"
+                            value="<?php echo esc_attr($today); ?>"
+                            required
+                            <?php echo $can_block ? '' : 'disabled'; ?>
+                        >
+                    </div>
+
+                    <div class="tr-date-field">
+                        <label for="trent-public-to-date">Til og med</label>
+                        <input
+                            type="date"
+                            id="trent-public-to-date"
+                            name="to_date"
+                            value="<?php echo esc_attr($today); ?>"
+                            required
+                            <?php echo $can_block ? '' : 'disabled'; ?>
+                        >
+                    </div>
+
+                    <div class="tr-date-submit">
+                        <button type="submit" class="tr-date-button" <?php echo $can_block ? '' : 'disabled'; ?>>
+                            Marker opptatt
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </section>
+
+        <section class="tr-date-card">
+            <h2>Aktive manuelle blokkeringer</h2>
+
+            <?php if (empty($blocks)) : ?>
+                <p class="tr-date-empty">Ingen aktive manuelle blokkeringer.</p>
+            <?php else : ?>
+                <div class="tr-date-list">
+                    <?php foreach ($blocks as $block) : ?>
+                        <?php
+                        $product_id = absint($block['product_id']);
+                        $title = $product_id ? get_the_title($product_id) : '';
+                        if (!$title) {
+                            $title = $product_id ? 'Utstyr #' . $product_id : 'Ukjent utstyr';
+                        }
+                        $block_ids = isset($block['block_ids']) && is_scalar($block['block_ids'])
+                            ? sanitize_text_field($block['block_ids'])
+                            : '';
+                        ?>
+                        <div class="tr-date-row">
+                            <div class="tr-date-product-name">
+                                <span class="tr-date-label">Utstyr</span>
+                                <strong><?php echo esc_html($title); ?></strong>
+                            </div>
+                            <div class="tr-date-period">
+                                <span class="tr-date-label">Fra</span>
+                                <?php echo esc_html(self::display_date($block['pickup_datetime'])); ?>
+                            </div>
+                            <div class="tr-date-period">
+                                <span class="tr-date-label">Til</span>
+                                <?php
+                                echo esc_html(
+                                    self::display_inclusive_end_date(
+                                        $block['pickup_datetime'],
+                                        $block['return_datetime']
+                                    )
+                                );
+                                ?>
+                            </div>
+                            <form
+                                class="tr-date-remove-form"
+                                method="post"
+                                action="<?php echo esc_url($action_url); ?>"
+                                onsubmit="return confirm('Fjerne denne blokkeringen?');"
+                            >
+                                <input type="hidden" name="<?php echo esc_attr(self::PUBLIC_ACTION_NAME); ?>" value="remove">
+                                <input type="hidden" name="block_ids" value="<?php echo esc_attr($block_ids); ?>">
+                                <input
+                                    type="hidden"
+                                    name="t_rent_date_signature"
+                                    value="<?php echo esc_attr(self::public_signature('remove', $block_ids, $token)); ?>"
+                                >
+                                <button type="submit" class="tr-date-remove">Fjern</button>
+                            </form>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </section>
+
+        <script>
+            (function () {
+                var from = document.getElementById('trent-public-from-date');
+                var to = document.getElementById('trent-public-to-date');
+
+                if (!from || !to) {
+                    return;
+                }
+
+                function syncEndDate() {
+                    to.min = from.value;
+
+                    if (!to.value || to.value < from.value) {
+                        to.value = from.value;
+                    }
+                }
+
+                from.addEventListener('change', syncEndDate);
+                syncEndDate();
+            }());
+        </script>
+        <?php
     }
 
     public static function render_page()
