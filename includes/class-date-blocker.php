@@ -75,7 +75,7 @@ final class Date_Blocker
                 Equipment_Control::PUBLIC_TOKEN_PARAM => $token,
                 self::PUBLIC_VIEW_PARAM                => self::PUBLIC_VIEW_VALUE,
             ],
-            home_url('/')
+            Equipment_Control::app_base_url()
         );
     }
 

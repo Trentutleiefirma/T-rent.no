@@ -23,9 +23,11 @@ if (!defined('ABSPATH')) {
 final class Equipment_Control
 {
     const PAGE_SLUG              = 't-rent-equipment-control';
+    const PUBLIC_APP_SLUG        = 't-rent-app';
     const PUBLIC_QUERY_VAR       = 't_rent_utstyrskontroll';
     const PUBLIC_TOKEN_PARAM     = 'key';
     const TOKEN_OPTION           = 't_rent_equipment_control_token';
+    const REWRITE_VERSION_OPTION = 't_rent_admin_app_rewrite_version';
     const STATUS_META            = '_t_rent_equipment_status';
     const CHECKED_AT_META        = '_t_rent_equipment_checked_at';
     const CHECKED_BY_META        = '_t_rent_equipment_checked_by';
@@ -38,9 +40,40 @@ final class Equipment_Control
 
     public function __construct()
     {
+        add_action('init', [__CLASS__, 'register_rewrite_rules']);
+        add_action('init', [$this, 'maybe_flush_rewrite_rules'], 99);
         add_action('admin_menu', [$this, 'register_admin_page'], 80);
         add_action('template_redirect', [$this, 'maybe_render_public_dashboard'], 0);
         add_filter('wp_robots', [$this, 'prevent_public_indexing']);
+    }
+
+    public static function app_base_url()
+    {
+        return rtrim(home_url('/'), '/') . '/' . self::PUBLIC_APP_SLUG . '/';
+    }
+
+    public static function register_rewrite_rules()
+    {
+        add_rewrite_rule(
+            '^' . self::PUBLIC_APP_SLUG . '(?:/.*)?$',
+            'index.php?t_rent_app_route=1',
+            'top'
+        );
+    }
+
+    public function maybe_flush_rewrite_rules()
+    {
+        $version = defined('T_RENT_ADMIN_APP_VERSION')
+            ? T_RENT_ADMIN_APP_VERSION
+            : '2.2.0';
+
+        if ((string) get_option(self::REWRITE_VERSION_OPTION, '') === $version) {
+            return;
+        }
+
+        self::register_rewrite_rules();
+        flush_rewrite_rules(false);
+        update_option(self::REWRITE_VERSION_OPTION, $version, false);
     }
 
     public function ensure_public_token()
@@ -88,6 +121,14 @@ final class Equipment_Control
 
     public function maybe_render_public_dashboard()
     {
+        if ($this->is_service_worker_request()) {
+            $this->render_service_worker();
+        }
+
+        if ($this->is_manifest_request()) {
+            $this->render_manifest();
+        }
+
         if (!$this->is_public_request()) {
             return;
         }
@@ -103,6 +144,25 @@ final class Equipment_Control
             status_header(503);
             nocache_headers();
             exit('Utstyrskontrollen er midlertidig utilgjengelig.');
+        }
+
+        if ($this->is_legacy_public_get()) {
+            $url = Date_Blocker::is_public_view()
+                ? Date_Blocker::public_url($token)
+                : $this->public_url($token);
+
+            if (
+                isset($_GET['t_rent_status']) &&
+                is_scalar($_GET['t_rent_status'])
+            ) {
+                $status = sanitize_key(wp_unslash($_GET['t_rent_status']));
+                if (in_array($status, ['pending', 'service', 'maintenance', 'out', 'ready'], true)) {
+                    $url = add_query_arg('t_rent_status', $status, $url);
+                }
+            }
+
+            wp_safe_redirect($url, 302);
+            exit;
         }
 
         if (Date_Blocker::is_public_post()) {
@@ -126,6 +186,190 @@ final class Equipment_Control
 
         $this->render_document($message, true, $token);
         exit;
+    }
+
+    private function render_manifest()
+    {
+        $token = $this->request_token();
+        if (!$this->valid_token($token)) {
+            status_header(404);
+            nocache_headers();
+            exit('Manifestet finnes ikke.');
+        }
+
+        status_header(200);
+        nocache_headers();
+        header('Content-Type: application/manifest+json; charset=UTF-8', true);
+        header('X-Robots-Tag: noindex, nofollow, noarchive', true);
+        header('Referrer-Policy: no-referrer', true);
+        header('X-Content-Type-Options: nosniff', true);
+
+        echo wp_json_encode(
+            $this->manifest_data($token),
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+        );
+        exit;
+    }
+
+    private function manifest_data($token)
+    {
+        return [
+            'id'                      => self::app_base_url(),
+            'name'                    => 'T-Rent Utstyrskontroll',
+            'short_name'              => 'T-Rent',
+            'description'             => 'Utstyrskontroll og manuell datoblokkering for T-Rent.',
+            'lang'                    => 'nb',
+            'start_url'               => $this->public_url($token),
+            'scope'                   => self::app_base_url(),
+            'display'                 => 'standalone',
+            'display_override'        => ['standalone', 'minimal-ui'],
+            'background_color'        => '#f3f4f6',
+            'theme_color'             => '#111827',
+            'orientation'             => 'any',
+            'prefer_related_applications' => false,
+            'icons'                   => [
+                [
+                    'src'     => $this->app_icon_url(192),
+                    'sizes'   => '192x192',
+                    'type'    => 'image/png',
+                    'purpose' => 'any maskable',
+                ],
+                [
+                    'src'     => $this->app_icon_url(512),
+                    'sizes'   => '512x512',
+                    'type'    => 'image/png',
+                    'purpose' => 'any maskable',
+                ],
+            ],
+            'shortcuts'               => [
+                [
+                    'name'      => 'Utstyrskontroll',
+                    'short_name'=> 'Utstyr',
+                    'url'       => $this->public_url($token),
+                    'icons'     => [
+                        [
+                            'src'   => $this->app_icon_url(192),
+                            'sizes' => '192x192',
+                        ],
+                    ],
+                ],
+                [
+                    'name'      => 'Blokker dato',
+                    'short_name'=> 'Blokker dato',
+                    'url'       => Date_Blocker::public_url($token),
+                    'icons'     => [
+                        [
+                            'src'   => $this->app_icon_url(192),
+                            'sizes' => '192x192',
+                        ],
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    private function render_service_worker()
+    {
+        status_header(200);
+        nocache_headers();
+        header('Content-Type: application/javascript; charset=UTF-8', true);
+        header('Service-Worker-Allowed: ' . $this->app_scope_path(), true);
+        header('X-Content-Type-Options: nosniff', true);
+
+        echo $this->service_worker_source();
+        exit;
+    }
+
+    private function service_worker_source()
+    {
+        $version = defined('T_RENT_ADMIN_APP_VERSION')
+            ? T_RENT_ADMIN_APP_VERSION
+            : '2.2.0';
+
+        return "'use strict';\n"
+            . 'const T_RENT_APP_VERSION = ' . wp_json_encode((string) $version) . ";\n"
+            . "self.addEventListener('install', function () {\n"
+            . "    self.skipWaiting();\n"
+            . "});\n"
+            . "self.addEventListener('activate', function (event) {\n"
+            . "    event.waitUntil(self.clients.claim());\n"
+            . "});\n"
+            . "self.addEventListener('fetch', function (event) {\n"
+            . "    if (event.request.method !== 'GET') {\n"
+            . "        return;\n"
+            . "    }\n"
+            . "    event.respondWith(fetch(event.request));\n"
+            . "});\n";
+    }
+
+    private function app_icon_url($size)
+    {
+        $plugin_file = defined('T_RENT_ADMIN_APP_FILE')
+            ? T_RENT_ADMIN_APP_FILE
+            : dirname(__DIR__) . '/t-rent-admin-app.php';
+
+        return plugins_url('assets/icon-' . absint($size) . '.png', $plugin_file);
+    }
+
+    private function manifest_url($token)
+    {
+        return add_query_arg(
+            self::PUBLIC_TOKEN_PARAM,
+            $token,
+            self::app_base_url() . 'manifest.webmanifest'
+        );
+    }
+
+    private function service_worker_url()
+    {
+        $version = defined('T_RENT_ADMIN_APP_VERSION')
+            ? T_RENT_ADMIN_APP_VERSION
+            : '2.2.0';
+
+        return add_query_arg(
+            'version',
+            rawurlencode((string) $version),
+            self::app_base_url() . 'sw.js'
+        );
+    }
+
+    private function app_scope_path()
+    {
+        $path = parse_url(self::app_base_url(), PHP_URL_PATH);
+        return '/' . trim((string) $path, '/') . '/';
+    }
+
+    private function request_path()
+    {
+        $request_uri = isset($_SERVER['REQUEST_URI']) && is_scalar($_SERVER['REQUEST_URI'])
+            ? (string) $_SERVER['REQUEST_URI']
+            : '';
+        $path = parse_url($request_uri, PHP_URL_PATH);
+
+        return '/' . ltrim((string) $path, '/');
+    }
+
+    private function is_app_page_request()
+    {
+        return rtrim($this->request_path(), '/') === rtrim($this->app_scope_path(), '/');
+    }
+
+    private function is_manifest_request()
+    {
+        return $this->request_path() === $this->app_scope_path() . 'manifest.webmanifest';
+    }
+
+    private function is_service_worker_request()
+    {
+        return $this->request_path() === $this->app_scope_path() . 'sw.js';
+    }
+
+    private function is_legacy_public_get()
+    {
+        return isset($_SERVER['REQUEST_METHOD'])
+            && strtoupper((string) $_SERVER['REQUEST_METHOD']) === 'GET'
+            && isset($_GET[self::PUBLIC_QUERY_VAR])
+            && !$this->is_app_page_request();
     }
 
     public function render_admin_page()
@@ -192,6 +436,9 @@ final class Equipment_Control
         $refresh_url = $calendar_view
             ? Date_Blocker::public_url($token)
             : $this->public_url($token);
+        $version = defined('T_RENT_ADMIN_APP_VERSION')
+            ? T_RENT_ADMIN_APP_VERSION
+            : '2.2.0';
 
         status_header(200);
         header('Content-Type: text/html; charset=' . get_bloginfo('charset'));
@@ -200,18 +447,30 @@ final class Equipment_Control
         echo '<meta charset="' . esc_attr(get_bloginfo('charset')) . '">';
         echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
         echo '<meta name="robots" content="noindex,nofollow,noarchive">';
+        echo '<meta name="theme-color" content="#111827">';
+        echo '<meta name="application-name" content="T-Rent">';
+        echo '<meta name="mobile-web-app-capable" content="yes">';
+        echo '<meta name="apple-mobile-web-app-capable" content="yes">';
+        echo '<meta name="apple-mobile-web-app-status-bar-style" content="default">';
+        echo '<meta name="apple-mobile-web-app-title" content="T-Rent">';
+        echo '<link rel="manifest" href="' . esc_url($this->manifest_url($token)) . '">';
+        echo '<link rel="icon" type="image/png" sizes="192x192" href="' . esc_url($this->app_icon_url(192)) . '">';
+        echo '<link rel="apple-touch-icon" href="' . esc_url($this->app_icon_url(192)) . '">';
         echo '<title>' . esc_html($page_title) . ' – T-Rent</title>';
         echo '</head><body style="margin:0;background:#f3f4f6;color:#111827;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif">';
         echo '<main style="max-width:1180px;margin:0 auto;padding:20px 14px 48px">';
         echo '<header style="display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:18px">';
-        echo '<div><div style="font-size:13px;font-weight:700;letter-spacing:.08em;color:#6b7280">T-RENT</div>';
+        echo '<div><div style="font-size:13px;font-weight:700;letter-spacing:.08em;color:#6b7280">T-RENT · APP ' . esc_html($version) . '</div>';
         echo '<h1 style="font-size:28px;line-height:1.15;margin:4px 0">' . esc_html($page_title) . '</h1>';
         echo '<div style="color:#6b7280">Sist oppdatert ' . esc_html(wp_date('d.m.Y H:i')) . '</div></div>';
+        echo '<div class="tr-app-header-actions">';
+        echo '<button type="button" id="tr-install-app" class="tr-install-app" hidden>Installer app</button>';
         echo '<a href="' . esc_url($refresh_url) . '" style="color:#1d4ed8;text-decoration:none;font-weight:600">Oppdater</a>';
+        echo '</div>';
         echo '</header>';
 
         echo '<style>';
-        echo '.tr-app-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#e5e7eb;border-radius:10px;padding:4px;margin:0 0 18px}.tr-app-tab{display:block;border-radius:7px;color:#4b5563;font-size:14px;font-weight:700;padding:11px 10px;text-align:center;text-decoration:none}.tr-app-tab-active{background:#fff;color:#111827;box-shadow:0 1px 2px rgba(0,0,0,.08)}';
+        echo '.tr-app-header-actions{display:flex;align-items:center;gap:10px}.tr-install-app{border:0;border-radius:7px;background:#111827;color:#fff;cursor:pointer;font:inherit;font-size:14px;font-weight:700;padding:9px 12px}.tr-app-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#e5e7eb;border-radius:10px;padding:4px;margin:0 0 18px}.tr-app-tab{display:block;border-radius:7px;color:#4b5563;font-size:14px;font-weight:700;padding:11px 10px;text-align:center;text-decoration:none}.tr-app-tab-active{background:#fff;color:#111827;box-shadow:0 1px 2px rgba(0,0,0,.08)}@media(max-width:520px){.tr-app-header-actions{align-items:flex-end;flex-direction:column-reverse;gap:8px}.tr-install-app{padding:8px 10px}}';
         echo '</style>';
         echo '<nav class="tr-app-tabs" aria-label="T-Rent administrasjon">';
         echo '<a class="tr-app-tab' . ($calendar_view ? '' : ' tr-app-tab-active') . '" href="' . esc_url($this->public_url($token)) . '">Utstyrskontroll</a>';
@@ -224,7 +483,89 @@ final class Equipment_Control
             $this->render_dashboard($message, $public, $token);
         }
 
+        $this->render_install_script();
         echo '</main></body></html>';
+    }
+
+    private function render_install_script()
+    {
+        $service_worker_url = $this->service_worker_url();
+        $scope = self::app_base_url();
+        $version = defined('T_RENT_ADMIN_APP_VERSION')
+            ? T_RENT_ADMIN_APP_VERSION
+            : '2.2.0';
+        ?>
+        <script>
+            (function () {
+                var installButton = document.getElementById('tr-install-app');
+                var installPrompt = null;
+                var standalone = window.matchMedia('(display-mode: standalone)').matches
+                    || window.navigator.standalone === true;
+
+                window.addEventListener('beforeinstallprompt', function (event) {
+                    event.preventDefault();
+                    installPrompt = event;
+
+                    if (installButton && !standalone) {
+                        installButton.hidden = false;
+                    }
+                });
+
+                if (installButton) {
+                    installButton.addEventListener('click', function () {
+                        if (!installPrompt) {
+                            return;
+                        }
+
+                        installPrompt.prompt();
+                        installPrompt.userChoice.then(function () {
+                            installPrompt = null;
+                            installButton.hidden = true;
+                        });
+                    });
+                }
+
+                window.addEventListener('appinstalled', function () {
+                    if (installButton) {
+                        installButton.hidden = true;
+                    }
+                });
+
+                if (!('serviceWorker' in navigator)) {
+                    return;
+                }
+
+                window.addEventListener('load', function () {
+                    navigator.serviceWorker.register(
+                        <?php echo wp_json_encode($service_worker_url, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>,
+                        {scope: <?php echo wp_json_encode($scope, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>}
+                    ).then(function () {
+                        return navigator.serviceWorker.ready;
+                    }).then(function () {
+                        if (navigator.serviceWorker.controller) {
+                            return;
+                        }
+
+                        var reloadKey = 't-rent-pwa-ready-<?php echo esc_js($version); ?>';
+                        try {
+                            if (window.sessionStorage.getItem(reloadKey)) {
+                                return;
+                            }
+                            window.sessionStorage.setItem(reloadKey, '1');
+                        } catch (error) {
+                            return;
+                        }
+
+                        window.setTimeout(function () {
+                            window.location.reload();
+                        }, 250);
+                    }).catch(function () {
+                        // Chrome's menu still offers a normal shortcut if service workers are unavailable.
+                    });
+                });
+            }());
+        </script>
+        <?php
     }
 
     private function render_dashboard($message, $public, $token)
@@ -1000,7 +1341,9 @@ final class Equipment_Control
 
     private function is_public_request()
     {
-        return isset($_GET[self::PUBLIC_QUERY_VAR]) || isset($_POST[self::PUBLIC_QUERY_VAR]);
+        return isset($_GET[self::PUBLIC_QUERY_VAR])
+            || isset($_POST[self::PUBLIC_QUERY_VAR])
+            || $this->is_app_page_request();
     }
 
     private function is_status_post()
@@ -1039,7 +1382,7 @@ final class Equipment_Control
         return add_query_arg([
             self::PUBLIC_QUERY_VAR   => '1',
             self::PUBLIC_TOKEN_PARAM => $token,
-        ], home_url('/'));
+        ], self::app_base_url());
     }
 
     private function woocommerce_ready()
