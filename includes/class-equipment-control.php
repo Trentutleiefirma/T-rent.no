@@ -1,6 +1,6 @@
 <?php
 
-namespace REDQ_RnB;
+namespace TRent_Drift;
 
 if (!defined('ABSPATH')) {
     exit;
@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
  * change rental prices, order totals, dates, payments, or storefront
  * availability.
  */
-class EquipmentInspectionManager
+final class Equipment_Control
 {
     const PAGE_SLUG              = 't-rent-equipment-control';
     const PUBLIC_QUERY_VAR       = 't_rent_utstyrskontroll';
@@ -31,11 +31,13 @@ class EquipmentInspectionManager
     const CHECKED_BY_META        = '_t_rent_equipment_checked_by';
     const CHECKED_NOTE_META      = '_t_rent_equipment_checked_note';
     const CHECKED_THROUGH_META   = '_t_rent_equipment_checked_through';
+    const SERVICE_AT_META        = '_t_rent_equipment_service_at';
+    const SERVICE_BY_META        = '_t_rent_equipment_service_by';
+    const SERVICE_NOTE_META      = '_t_rent_equipment_service_note';
     const LOG_META               = '_t_rent_equipment_control_log';
 
     public function __construct()
     {
-        add_action('init', [$this, 'ensure_public_token'], 30);
         add_action('admin_menu', [$this, 'register_admin_page'], 80);
         add_action('template_redirect', [$this, 'maybe_render_public_dashboard'], 0);
         add_filter('wp_robots', [$this, 'prevent_public_indexing']);
@@ -53,8 +55,18 @@ class EquipmentInspectionManager
 
     public function register_admin_page()
     {
+        add_menu_page(
+            'Utstyrskontroll',
+            'T-Rent Admin',
+            'manage_woocommerce',
+            self::PAGE_SLUG,
+            [$this, 'render_admin_page'],
+            'dashicons-clipboard',
+            56.5
+        );
+
         add_submenu_page(
-            'woocommerce',
+            self::PAGE_SLUG,
             'Utstyrskontroll',
             'Utstyrskontroll',
             'manage_woocommerce',
@@ -122,6 +134,8 @@ class EquipmentInspectionManager
             echo '<div class="wrap"><h1>Utstyrskontroll</h1><p>WooCommerce er ikke tilgjengelig.</p></div>';
             return;
         }
+
+        $this->ensure_public_token();
 
         $message = '';
 
@@ -196,6 +210,7 @@ class EquipmentInspectionManager
         $rows = $this->equipment_rows();
         $counts = [
             'pending'     => 0,
+            'service'     => 0,
             'maintenance' => 0,
             'out'         => 0,
             'ready'       => 0,
@@ -207,23 +222,55 @@ class EquipmentInspectionManager
             }
         }
 
+        $filter = isset($_GET['t_rent_status'])
+            ? sanitize_key(wp_unslash($_GET['t_rent_status']))
+            : '';
+
+        if (!in_array($filter, ['pending', 'service', 'maintenance', 'out', 'ready'], true)) {
+            $filter = '';
+        }
+
+        $visible_rows = $rows;
+        if ($filter !== '') {
+            $visible_rows = array_values(array_filter($rows, function ($row) use ($filter) {
+                return isset($row['display_status']) && $row['display_status'] === $filter;
+            }));
+        }
+
         if ($message !== '') {
             echo '<div style="max-width:1180px;background:#ecfdf5;border:1px solid #6ee7b7;color:#065f46;border-radius:8px;padding:12px 14px;margin:0 0 16px;font-weight:600">' . esc_html($message) . '</div>';
         }
 
         echo '<style>';
-        echo '.tr-counts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 18px}.tr-count{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:13px}.tr-count b{display:block;font-size:25px}.tr-count span{color:#6b7280;font-size:13px}.tr-table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden}.tr-table th,.tr-table td{text-align:left;padding:12px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top}.tr-table th{background:#f9fafb;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280}.tr-table tr:last-child td{border-bottom:0}.tr-badge{display:inline-block;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:700;white-space:nowrap}.tr-badge-pending{background:#fff7ed;color:#9a3412}.tr-badge-maintenance{background:#fef2f2;color:#991b1b}.tr-badge-out{background:#eff6ff;color:#1e40af}.tr-badge-ready{background:#ecfdf5;color:#065f46}.tr-small{font-size:12px;line-height:1.45;color:#6b7280}.tr-actions{min-width:310px}.tr-form{display:grid;grid-template-columns:minmax(120px,1fr) auto auto;gap:6px;align-items:center}.tr-form input[type=text]{min-width:0;border:1px solid #d1d5db;border-radius:6px;padding:8px}.tr-btn{border:0;border-radius:6px;padding:8px 10px;font-weight:700;cursor:pointer}.tr-ready{background:#047857;color:#fff}.tr-hold{background:#fee2e2;color:#991b1b}.tr-reset{background:#ffedd5;color:#9a3412}.tr-empty{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:28px;text-align:center;color:#6b7280}@media(max-width:800px){.tr-counts{grid-template-columns:repeat(2,minmax(0,1fr))}.tr-table,.tr-table tbody,.tr-table tr,.tr-table td{display:block}.tr-table thead{display:none}.tr-table tr{border-bottom:7px solid #f3f4f6;padding:7px 0}.tr-table td{border:0;padding:6px 12px}.tr-table td:before{content:attr(data-label);display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:2px}.tr-actions{min-width:0}.tr-form{grid-template-columns:1fr 1fr}.tr-form input[type=text]{grid-column:1/-1}.tr-form .tr-wide{grid-column:1/-1}}';
+        echo '.tr-counts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:0 0 18px}.tr-count-link{display:block;color:inherit;text-decoration:none;border-radius:9px;outline:none}.tr-count{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:13px;transition:transform .12s ease,box-shadow .12s ease}.tr-count-link:active .tr-count{transform:scale(.98)}.tr-count-link:focus-visible .tr-count,.tr-count-active{box-shadow:0 0 0 3px rgba(37,99,235,.18)}.tr-count b{display:block;font-size:25px}.tr-count span{color:#6b7280;font-size:13px}.tr-filterbar{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px;margin:-6px 0 18px}.tr-filterbar strong{font-size:14px}.tr-filterbar a{font-size:14px;font-weight:700;color:#1d4ed8;text-decoration:none}.tr-table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden}.tr-table th,.tr-table td{text-align:left;padding:12px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top}.tr-table th{background:#f9fafb;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280}.tr-table tr:last-child td{border-bottom:0}.tr-badge{display:inline-block;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:700;white-space:nowrap}.tr-badge-pending{background:#fff7ed;color:#9a3412}.tr-badge-service{background:#f5f3ff;color:#6d28d9}.tr-badge-maintenance{background:#fef2f2;color:#991b1b}.tr-badge-out{background:#eff6ff;color:#1e40af}.tr-badge-ready{background:#ecfdf5;color:#065f46}.tr-small{font-size:12px;line-height:1.45;color:#6b7280}.tr-service-history{margin-top:14px;padding-top:12px;border-top:1px solid #e5e7eb}.tr-subhead{margin-bottom:4px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9ca3af}.tr-actions{min-width:310px}.tr-form{display:grid;grid-template-columns:minmax(120px,1fr) auto auto;gap:6px;align-items:center}.tr-form input[type=text]{min-width:0;border:1px solid #d1d5db;border-radius:6px;padding:8px}.tr-btn{border:0;border-radius:6px;padding:8px 10px;font-weight:700;cursor:pointer}.tr-ready{background:#047857;color:#fff}.tr-hold{background:#fee2e2;color:#991b1b}.tr-service{background:#ede9fe;color:#5b21b6}.tr-reset{background:#ffedd5;color:#9a3412}.tr-empty{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:28px;text-align:center;color:#6b7280}@media(max-width:800px){.tr-counts{grid-template-columns:repeat(2,minmax(0,1fr))}.tr-table,.tr-table tbody,.tr-table tr,.tr-table td{display:block}.tr-table thead{display:none}.tr-table tr{border-bottom:7px solid #f3f4f6;padding:7px 0}.tr-table td{border:0;padding:6px 12px}.tr-table td:before{content:attr(data-label);display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:2px}.tr-actions{min-width:0}.tr-form{grid-template-columns:1fr 1fr}.tr-form input[type=text]{grid-column:1/-1}.tr-form .tr-wide{grid-column:1/-1}}';
         echo '</style>';
 
         echo '<div class="tr-counts">';
-        $this->count_card($counts['pending'], 'Må kontrolleres', '#f97316');
-        $this->count_card($counts['maintenance'], 'Ikke klar', '#dc2626');
-        $this->count_card($counts['out'], 'Ute nå', '#2563eb');
-        $this->count_card($counts['ready'], 'Kontrollert og klar', '#059669');
+        $this->count_card($counts['pending'], 'Må kontrolleres', '#f97316', 'pending', $filter, $public, $token);
+        $this->count_card($counts['service'], 'Service', '#7c3aed', 'service', $filter, $public, $token);
+        $this->count_card($counts['maintenance'], 'Ikke klar', '#dc2626', 'maintenance', $filter, $public, $token);
+        $this->count_card($counts['out'], 'Ute nå', '#2563eb', 'out', $filter, $public, $token);
+        $this->count_card($counts['ready'], 'Kontrollert og klar', '#059669', 'ready', $filter, $public, $token);
         echo '</div>';
+
+        if ($filter !== '') {
+            $clear_url = $public
+                ? $this->public_url($token)
+                : admin_url('admin.php?page=' . self::PAGE_SLUG);
+
+            echo '<div class="tr-filterbar">';
+            echo '<strong>Viser: ' . esc_html($this->status_label($filter)) . ' (' . esc_html(count($visible_rows)) . ')</strong>';
+            echo '<a href="' . esc_url($clear_url) . '">Vis alle</a>';
+            echo '</div>';
+        }
 
         if (empty($rows)) {
             echo '<div class="tr-empty">Ingen RnB-utstyr ble funnet.</div>';
+            return;
+        }
+
+        if (empty($visible_rows)) {
+            echo '<div class="tr-empty">Ingen utstyr har denne statusen.</div>';
             return;
         }
 
@@ -231,7 +278,7 @@ class EquipmentInspectionManager
         echo '<th>Utstyr</th><th>Status</th><th>Siste / pågående leie</th><th>Sist kontrollert</th><th>Handling</th>';
         echo '</tr></thead><tbody>';
 
-        foreach ($rows as $row) {
+        foreach ($visible_rows as $row) {
             $inventory_id = (int) $row['inventory_id'];
             $status = $row['display_status'];
             echo '<tr>';
@@ -258,6 +305,22 @@ class EquipmentInspectionManager
             } else {
                 echo '<span class="tr-small">Ingen kontroll registrert</span>';
             }
+
+            echo '<div class="tr-service-history">';
+            echo '<div class="tr-subhead">Sist service</div>';
+            if ($row['service_at'] !== '') {
+                echo '<strong>' . esc_html($this->format_datetime($row['service_at'])) . '</strong>';
+                if ($row['service_by'] !== '') {
+                    echo '<div class="tr-small">av ' . esc_html($row['service_by']) . '</div>';
+                }
+                if ($row['service_note'] !== '') {
+                    echo '<div class="tr-small">' . esc_html($row['service_note']) . '</div>';
+                }
+            } else {
+                echo '<span class="tr-small">Ingen service registrert</span>';
+            }
+            echo '</div>';
+
             echo '</td>';
             echo '<td data-label="Handling" class="tr-actions">';
             $this->render_action_form($inventory_id, $status, $public, $token);
@@ -269,9 +332,19 @@ class EquipmentInspectionManager
         echo '<p class="tr-small" style="margin:12px 2px 0">«Kontrollert og klar» må registreres etter fysisk kontroll. Etter neste WooCommerce-retur endres status automatisk til «Må kontrolleres». For Hygglo eller annen manuell utleie bruker du «Sett til kontroll» når utstyret kommer tilbake.</p>';
     }
 
-    private function count_card($number, $label, $color)
+    private function count_card($number, $label, $color, $status, $current_filter, $public, $token)
     {
-        echo '<div class="tr-count" style="border-top:4px solid ' . esc_attr($color) . '"><b>' . esc_html($number) . '</b><span>' . esc_html($label) . '</span></div>';
+        $base_url = $public
+            ? $this->public_url($token)
+            : admin_url('admin.php?page=' . self::PAGE_SLUG);
+
+        $url = add_query_arg('t_rent_status', $status, $base_url);
+        $active_class = $current_filter === $status ? ' tr-count-active' : '';
+
+        echo '<a class="tr-count-link" href="' . esc_url($url) . '" aria-label="' . esc_attr('Vis ' . $label) . '">';
+        echo '<div class="tr-count' . esc_attr($active_class) . '" style="border-top:4px solid ' . esc_attr($color) . '">';
+        echo '<b>' . esc_html($number) . '</b><span>' . esc_html($label) . '</span>';
+        echo '</div></a>';
     }
 
     private function render_action_form($inventory_id, $status, $public, $token)
@@ -299,6 +372,12 @@ class EquipmentInspectionManager
 
         if ($status !== 'maintenance') {
             echo '<button class="tr-btn tr-hold" type="submit" name="t_rent_control_action" value="maintenance">Ikke klar</button>';
+        } else {
+            echo '<button class="tr-btn tr-reset" type="submit" name="t_rent_control_action" value="pending">Til ny kontroll</button>';
+        }
+
+        if ($status !== 'service') {
+            echo '<button class="tr-btn tr-service" type="submit" name="t_rent_control_action" value="service">Service</button>';
         } else {
             echo '<button class="tr-btn tr-reset tr-wide" type="submit" name="t_rent_control_action" value="pending">Til ny kontroll</button>';
         }
@@ -373,11 +452,35 @@ class EquipmentInspectionManager
             $stored_status = (string) get_post_meta($inventory_id, self::STATUS_META, true);
             $checked_at = (string) get_post_meta($inventory_id, self::CHECKED_AT_META, true);
             $checked_through = (int) get_post_meta($inventory_id, self::CHECKED_THROUGH_META, true);
+            $service_at = (string) get_post_meta($inventory_id, self::SERVICE_AT_META, true);
+            $service_by = (string) get_post_meta($inventory_id, self::SERVICE_BY_META, true);
+            $service_note = (string) get_post_meta($inventory_id, self::SERVICE_NOTE_META, true);
+
+            // Backward compatibility for service actions recorded before v1.0.3.
+            if ($service_at === '') {
+                $log = get_post_meta($inventory_id, self::LOG_META, true);
+                if (is_array($log)) {
+                    foreach ($log as $entry) {
+                        if (!is_array($entry) || ($entry['status'] ?? '') !== 'service') {
+                            continue;
+                        }
+
+                        $service_at = isset($entry['at']) ? (string) $entry['at'] : '';
+                        $service_by = isset($entry['by']) ? (string) $entry['by'] : '';
+                        $service_note = isset($entry['note']) ? (string) $entry['note'] : '';
+                        break;
+                    }
+                }
+            }
+
             $schedule = isset($bookings[$inventory_id]) ? $bookings[$inventory_id] : $this->empty_schedule();
 
             if ($stored_status === 'maintenance') {
                 $display_status = 'maintenance';
                 $reason = 'Registrert som ikke klar for utleie.';
+            } elseif ($stored_status === 'service') {
+                $display_status = 'service';
+                $reason = 'Registrert til service.';
             } elseif ($stored_status === 'pending') {
                 $display_status = 'pending';
                 $reason = 'Manuelt satt til kontroll.';
@@ -407,6 +510,9 @@ class EquipmentInspectionManager
                 'checked_at'     => $checked_at,
                 'checked_by'     => (string) get_post_meta($inventory_id, self::CHECKED_BY_META, true),
                 'checked_note'   => (string) get_post_meta($inventory_id, self::CHECKED_NOTE_META, true),
+                'service_at'     => $service_at,
+                'service_by'     => $service_by,
+                'service_note'   => $service_note,
                 'last_returned'  => $schedule['last_returned'],
                 'active_booking' => $schedule['active_booking'],
                 'next_booking'   => $schedule['next_booking'],
@@ -414,7 +520,7 @@ class EquipmentInspectionManager
             ];
         }
 
-        $priority = ['pending' => 0, 'maintenance' => 1, 'out' => 2, 'ready' => 3];
+        $priority = ['pending' => 0, 'service' => 1, 'maintenance' => 2, 'out' => 3, 'ready' => 4];
         usort($rows, function ($a, $b) use ($priority) {
             $a_priority = isset($priority[$a['display_status']]) ? $priority[$a['display_status']] : 9;
             $b_priority = isset($priority[$b['display_status']]) ? $priority[$b['display_status']] : 9;
@@ -730,7 +836,7 @@ class EquipmentInspectionManager
             return 'Kunne ikke finne utstyret.';
         }
 
-        if (!in_array($action, ['ready', 'pending', 'maintenance'], true)) {
+        if (!in_array($action, ['ready', 'pending', 'service', 'maintenance'], true)) {
             return 'Ugyldig kontrollstatus.';
         }
 
@@ -779,6 +885,12 @@ class EquipmentInspectionManager
             update_post_meta($inventory_id, self::CHECKED_BY_META, $actor);
             update_post_meta($inventory_id, self::CHECKED_NOTE_META, $note);
             $message = get_the_title($inventory_id) . ' er registrert som ikke klar for utleie.';
+        } elseif ($action === 'service') {
+            update_post_meta($inventory_id, self::STATUS_META, 'service');
+            update_post_meta($inventory_id, self::SERVICE_AT_META, $now_mysql);
+            update_post_meta($inventory_id, self::SERVICE_BY_META, $actor);
+            update_post_meta($inventory_id, self::SERVICE_NOTE_META, $note);
+            $message = get_the_title($inventory_id) . ' er satt til service.';
         } else {
             update_post_meta($inventory_id, self::STATUS_META, 'pending');
             update_post_meta($inventory_id, self::CHECKED_BY_META, $actor);
@@ -844,6 +956,7 @@ class EquipmentInspectionManager
     {
         $labels = [
             'pending'     => 'Må kontrolleres',
+            'service'     => 'Service',
             'maintenance' => 'Ikke klar',
             'out'         => 'Ute på leie',
             'ready'       => 'Kontrollert og klar',

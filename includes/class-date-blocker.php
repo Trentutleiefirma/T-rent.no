@@ -1,18 +1,15 @@
 <?php
-/**
- * Plugin Name: T-Rent Datoblokkering
- * Description: Enkel manuell blokkering av utleiedatoer for T-Rent. Oppretter RnB CUSTOM-blokkeringer uten at klokkeslett må angis.
- * Version: 1.0.0
- * Author: T-Rent
- * Requires at least: 6.0
- * Requires PHP: 7.4
- */
+
+namespace TRent_Drift;
+
+use DateTimeImmutable;
+use Exception;
 
 if (!defined('ABSPATH')) {
     exit;
 }
 
-final class TRent_Date_Blocker
+final class Date_Blocker
 {
     const PAGE_SLUG = 't-rent-datoblokkering';
 
@@ -26,14 +23,13 @@ final class TRent_Date_Blocker
 
     public static function register_menu()
     {
-        add_menu_page(
+        add_submenu_page(
+            Equipment_Control::PAGE_SLUG,
             'Blokker dato',
             'Blokker dato',
             'manage_woocommerce',
             self::PAGE_SLUG,
-            [__CLASS__, 'render_page'],
-            'dashicons-calendar-alt',
-            56.5
+            [__CLASS__, 'render_page']
         );
     }
 
@@ -827,5 +823,3 @@ final class TRent_Date_Blocker
         <?php
     }
 }
-
-TRent_Date_Blocker::init();
