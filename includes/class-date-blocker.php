@@ -688,7 +688,8 @@ final class Date_Blocker
             .tr-date-description{color:#6b7280;line-height:1.5;margin:0 0 16px}
             .tr-date-grid{display:grid;grid-template-columns:minmax(220px,2fr) minmax(145px,1fr) minmax(145px,1fr) auto;gap:12px;align-items:end}
             .tr-date-field label{display:block;font-size:13px;font-weight:700;margin:0 0 6px}
-            .tr-date-field select,.tr-date-field input[type=date]{box-sizing:border-box;width:100%;min-height:44px;border:1px solid #d1d5db;border-radius:7px;background:#fff;color:#111827;font:inherit;padding:8px 10px}
+            .tr-date-field select,.tr-date-field input[type=date],.tr-date-field input[type=search]{box-sizing:border-box;width:100%;min-height:44px;border:1px solid #d1d5db;border-radius:7px;background:#fff;color:#111827;font:inherit;padding:8px 10px}
+            .tr-date-product-search{margin-bottom:9px}.tr-date-select-label{color:#6b7280;font-size:12px!important}.tr-date-search-empty{color:#991b1b;font-size:13px;font-weight:600;margin:7px 0 0}
             .tr-date-button{min-height:44px;border:0;border-radius:7px;background:#1d4ed8;color:#fff;font:inherit;font-weight:700;padding:9px 18px;cursor:pointer}
             .tr-date-button:disabled{background:#9ca3af;cursor:not-allowed}
             .tr-date-list{display:grid;gap:10px;margin-top:14px}
@@ -735,7 +736,17 @@ final class Date_Blocker
 
                 <div class="tr-date-grid">
                     <div class="tr-date-field tr-date-product">
-                        <label for="trent-public-product-id">Utstyr</label>
+                        <label for="trent-public-product-search">Søk etter utstyr</label>
+                        <input
+                            type="search"
+                            id="trent-public-product-search"
+                            class="tr-date-product-search"
+                            placeholder="Navn eller produktnummer"
+                            autocomplete="off"
+                            enterkeyhint="search"
+                            <?php echo $can_block ? '' : 'disabled'; ?>
+                        >
+                        <label class="tr-date-select-label" for="trent-public-product-id">Velg utstyr</label>
                         <select
                             id="trent-public-product-id"
                             name="product_id"
@@ -744,11 +755,15 @@ final class Date_Blocker
                         >
                             <option value="">Velg utstyr</option>
                             <?php foreach ($products as $product_id) : ?>
-                                <option value="<?php echo esc_attr($product_id); ?>">
+                                <option
+                                    value="<?php echo esc_attr($product_id); ?>"
+                                    data-search="<?php echo esc_attr(get_the_title($product_id) . ' ' . $product_id); ?>"
+                                >
                                     <?php echo esc_html(get_the_title($product_id)); ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
+                        <p id="trent-public-product-empty" class="tr-date-search-empty" hidden>Ingen utstyr funnet.</p>
                     </div>
 
                     <div class="tr-date-field">
@@ -847,21 +862,51 @@ final class Date_Blocker
             (function () {
                 var from = document.getElementById('trent-public-from-date');
                 var to = document.getElementById('trent-public-to-date');
+                var productSearch = document.getElementById('trent-public-product-search');
+                var productSelect = document.getElementById('trent-public-product-id');
+                var productEmpty = document.getElementById('trent-public-product-empty');
 
-                if (!from || !to) {
-                    return;
-                }
+                if (from && to) {
+                    function syncEndDate() {
+                        to.min = from.value;
 
-                function syncEndDate() {
-                    to.min = from.value;
-
-                    if (!to.value || to.value < from.value) {
-                        to.value = from.value;
+                        if (!to.value || to.value < from.value) {
+                            to.value = from.value;
+                        }
                     }
+
+                    from.addEventListener('change', syncEndDate);
+                    syncEndDate();
                 }
 
-                from.addEventListener('change', syncEndDate);
-                syncEndDate();
+                if (productSearch && productSelect) {
+                    productSearch.addEventListener('input', function () {
+                        var needle = productSearch.value.trim().toLocaleLowerCase('nb-NO');
+                        var matches = 0;
+
+                        Array.prototype.forEach.call(productSelect.options, function (option, index) {
+                            if (index === 0) {
+                                return;
+                            }
+
+                            var searchable = (option.getAttribute('data-search') || option.textContent || '')
+                                .toLocaleLowerCase('nb-NO');
+                            var visible = needle === '' || searchable.indexOf(needle) !== -1;
+                            option.hidden = !visible;
+                            option.disabled = !visible;
+
+                            if (visible) {
+                                matches++;
+                            } else if (option.selected) {
+                                productSelect.value = '';
+                            }
+                        });
+
+                        if (productEmpty) {
+                            productEmpty.hidden = matches !== 0;
+                        }
+                    });
+                }
             }());
         </script>
         <?php

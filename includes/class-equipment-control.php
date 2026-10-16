@@ -26,6 +26,7 @@ final class Equipment_Control
     const PUBLIC_APP_SLUG        = 't-rent-app';
     const PUBLIC_QUERY_VAR       = 't_rent_utstyrskontroll';
     const PUBLIC_TOKEN_PARAM     = 'key';
+    const SEARCH_PARAM           = 't_rent_search';
     const TOKEN_OPTION           = 't_rent_equipment_control_token';
     const REWRITE_VERSION_OPTION = 't_rent_admin_app_rewrite_version';
     const STATUS_META            = '_t_rent_equipment_status';
@@ -65,7 +66,7 @@ final class Equipment_Control
     {
         $version = defined('T_RENT_ADMIN_APP_VERSION')
             ? T_RENT_ADMIN_APP_VERSION
-            : '2.2.0';
+            : '2.3.0';
 
         if ((string) get_option(self::REWRITE_VERSION_OPTION, '') === $version) {
             return;
@@ -171,7 +172,8 @@ final class Equipment_Control
 
         if ($this->is_status_post()) {
             $message = $this->handle_status_action(true, $token);
-            wp_safe_redirect(add_query_arg('t_rent_notice', $message, $this->public_url($token)));
+            $redirect_url = add_query_arg('t_rent_notice', $message, $this->public_url($token));
+            wp_safe_redirect($this->add_posted_dashboard_filters($redirect_url));
             exit;
         }
 
@@ -284,7 +286,7 @@ final class Equipment_Control
     {
         $version = defined('T_RENT_ADMIN_APP_VERSION')
             ? T_RENT_ADMIN_APP_VERSION
-            : '2.2.0';
+            : '2.3.0';
 
         return "'use strict';\n"
             . 'const T_RENT_APP_VERSION = ' . wp_json_encode((string) $version) . ";\n"
@@ -324,7 +326,7 @@ final class Equipment_Control
     {
         $version = defined('T_RENT_ADMIN_APP_VERSION')
             ? T_RENT_ADMIN_APP_VERSION
-            : '2.2.0';
+            : '2.3.0';
 
         return add_query_arg(
             'version',
@@ -399,11 +401,12 @@ final class Equipment_Control
             exit;
         } elseif ($this->is_status_post()) {
             $message = $this->handle_status_action(false, '');
-            wp_safe_redirect(add_query_arg(
+            $redirect_url = add_query_arg(
                 't_rent_notice',
                 $message,
                 admin_url('admin.php?page=' . self::PAGE_SLUG)
-            ));
+            );
+            wp_safe_redirect($this->add_posted_dashboard_filters($redirect_url));
             exit;
         } elseif (isset($_GET['t_rent_notice'])) {
             $message = sanitize_text_field(wp_unslash($_GET['t_rent_notice']));
@@ -438,7 +441,7 @@ final class Equipment_Control
             : $this->public_url($token);
         $version = defined('T_RENT_ADMIN_APP_VERSION')
             ? T_RENT_ADMIN_APP_VERSION
-            : '2.2.0';
+            : '2.3.0';
 
         status_header(200);
         header('Content-Type: text/html; charset=' . get_bloginfo('charset'));
@@ -493,7 +496,7 @@ final class Equipment_Control
         $scope = self::app_base_url();
         $version = defined('T_RENT_ADMIN_APP_VERSION')
             ? T_RENT_ADMIN_APP_VERSION
-            : '2.2.0';
+            : '2.3.0';
         ?>
         <script>
             (function () {
@@ -571,6 +574,16 @@ final class Equipment_Control
     private function render_dashboard($message, $public, $token)
     {
         $rows = $this->equipment_rows();
+        $filter = $this->requested_status_filter();
+        $search = $this->requested_search_query();
+
+        $searched_rows = $rows;
+        if ($search !== '') {
+            $searched_rows = array_values(array_filter($rows, function ($row) use ($search) {
+                return $this->equipment_matches_search($row, $search);
+            }));
+        }
+
         $counts = [
             'pending'     => 0,
             'service'     => 0,
@@ -579,23 +592,15 @@ final class Equipment_Control
             'ready'       => 0,
         ];
 
-        foreach ($rows as $row) {
+        foreach ($searched_rows as $row) {
             if (isset($counts[$row['display_status']])) {
                 $counts[$row['display_status']]++;
             }
         }
 
-        $filter = isset($_GET['t_rent_status'])
-            ? sanitize_key(wp_unslash($_GET['t_rent_status']))
-            : '';
-
-        if (!in_array($filter, ['pending', 'service', 'maintenance', 'out', 'ready'], true)) {
-            $filter = '';
-        }
-
-        $visible_rows = $rows;
+        $visible_rows = $searched_rows;
         if ($filter !== '') {
-            $visible_rows = array_values(array_filter($rows, function ($row) use ($filter) {
+            $visible_rows = array_values(array_filter($searched_rows, function ($row) use ($filter) {
                 return isset($row['display_status']) && $row['display_status'] === $filter;
             }));
         }
@@ -605,24 +610,34 @@ final class Equipment_Control
         }
 
         echo '<style>';
-        echo '.tr-counts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:0 0 18px}.tr-count-link{display:block;color:inherit;text-decoration:none;border-radius:9px;outline:none}.tr-count{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:13px;transition:transform .12s ease,box-shadow .12s ease}.tr-count-link:active .tr-count{transform:scale(.98)}.tr-count-link:focus-visible .tr-count,.tr-count-active{box-shadow:0 0 0 3px rgba(37,99,235,.18)}.tr-count b{display:block;font-size:25px}.tr-count span{color:#6b7280;font-size:13px}.tr-filterbar{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px;margin:-6px 0 18px}.tr-filterbar strong{font-size:14px}.tr-filterbar a{font-size:14px;font-weight:700;color:#1d4ed8;text-decoration:none}.tr-table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden}.tr-table th,.tr-table td{text-align:left;padding:12px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top}.tr-table th{background:#f9fafb;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280}.tr-table tr:last-child td{border-bottom:0}.tr-badge{display:inline-block;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:700;white-space:nowrap}.tr-badge-pending{background:#fff7ed;color:#9a3412}.tr-badge-service{background:#f5f3ff;color:#6d28d9}.tr-badge-maintenance{background:#fef2f2;color:#991b1b}.tr-badge-out{background:#eff6ff;color:#1e40af}.tr-badge-ready{background:#ecfdf5;color:#065f46}.tr-small{font-size:12px;line-height:1.45;color:#6b7280}.tr-service-history{margin-top:14px;padding-top:12px;border-top:1px solid #e5e7eb}.tr-subhead{margin-bottom:4px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9ca3af}.tr-actions{min-width:310px}.tr-form{display:grid;grid-template-columns:minmax(120px,1fr) auto auto;gap:6px;align-items:center}.tr-form input[type=text]{min-width:0;border:1px solid #d1d5db;border-radius:6px;padding:8px}.tr-btn{border:0;border-radius:6px;padding:8px 10px;font-weight:700;cursor:pointer}.tr-ready{background:#047857;color:#fff}.tr-hold{background:#fee2e2;color:#991b1b}.tr-service{background:#ede9fe;color:#5b21b6}.tr-reset{background:#ffedd5;color:#9a3412}.tr-empty{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:28px;text-align:center;color:#6b7280}@media(max-width:800px){.tr-counts{grid-template-columns:repeat(2,minmax(0,1fr))}.tr-table,.tr-table tbody,.tr-table tr,.tr-table td{display:block}.tr-table thead{display:none}.tr-table tr{border-bottom:7px solid #f3f4f6;padding:7px 0}.tr-table td{border:0;padding:6px 12px}.tr-table td:before{content:attr(data-label);display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:2px}.tr-actions{min-width:0}.tr-form{grid-template-columns:1fr 1fr}.tr-form input[type=text]{grid-column:1/-1}.tr-form .tr-wide{grid-column:1/-1}}';
+        echo '.tr-search{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:end;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin:0 0 18px}.tr-search-field label{display:block;font-size:13px;font-weight:700;margin:0 0 6px}.tr-search-field input{box-sizing:border-box;width:100%;min-height:44px;border:1px solid #9ca3af;border-radius:7px;background:#fff;color:#111827;font:inherit;padding:8px 11px}.tr-search-button{min-height:44px;border:0;border-radius:7px;background:#1d4ed8;color:#fff;cursor:pointer;font:inherit;font-weight:700;padding:9px 18px}.tr-search-clear{display:flex;align-items:center;min-height:44px;color:#1d4ed8;font-size:14px;font-weight:700;text-decoration:none;padding:0 6px}.tr-counts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:0 0 18px}.tr-count-link{display:block;color:inherit;text-decoration:none;border-radius:9px;outline:none}.tr-count{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:13px;transition:transform .12s ease,box-shadow .12s ease}.tr-count-link:active .tr-count{transform:scale(.98)}.tr-count-link:focus-visible .tr-count,.tr-count-active{box-shadow:0 0 0 3px rgba(37,99,235,.18)}.tr-count b{display:block;font-size:25px}.tr-count span{color:#6b7280;font-size:13px}.tr-filterbar{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px;margin:-6px 0 18px}.tr-filterbar strong{font-size:14px}.tr-filterbar a{font-size:14px;font-weight:700;color:#1d4ed8;text-decoration:none}.tr-table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden}.tr-table th,.tr-table td{text-align:left;padding:12px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top}.tr-table th{background:#f9fafb;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280}.tr-table tr:last-child td{border-bottom:0}.tr-badge{display:inline-block;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:700;white-space:nowrap}.tr-badge-pending{background:#fff7ed;color:#9a3412}.tr-badge-service{background:#f5f3ff;color:#6d28d9}.tr-badge-maintenance{background:#fef2f2;color:#991b1b}.tr-badge-out{background:#eff6ff;color:#1e40af}.tr-badge-ready{background:#ecfdf5;color:#065f46}.tr-small{font-size:12px;line-height:1.45;color:#6b7280}.tr-service-history{margin-top:14px;padding-top:12px;border-top:1px solid #e5e7eb}.tr-subhead{margin-bottom:4px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9ca3af}.tr-actions{min-width:310px}.tr-form{display:grid;grid-template-columns:minmax(120px,1fr) auto auto;gap:6px;align-items:center}.tr-form input[type=text]{min-width:0;border:1px solid #d1d5db;border-radius:6px;padding:8px}.tr-btn{border:0;border-radius:6px;padding:8px 10px;font-weight:700;cursor:pointer}.tr-ready{background:#047857;color:#fff}.tr-hold{background:#fee2e2;color:#991b1b}.tr-service{background:#ede9fe;color:#5b21b6}.tr-reset{background:#ffedd5;color:#9a3412}.tr-empty{background:#fff;border:1px solid #e5e7eb;border-radius:9px;padding:28px;text-align:center;color:#6b7280}@media(max-width:800px){.tr-counts{grid-template-columns:repeat(2,minmax(0,1fr))}.tr-table,.tr-table tbody,.tr-table tr,.tr-table td{display:block}.tr-table thead{display:none}.tr-table tr{border-bottom:7px solid #f3f4f6;padding:7px 0}.tr-table td{border:0;padding:6px 12px}.tr-table td:before{content:attr(data-label);display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ca3af;margin-bottom:2px}.tr-actions{min-width:0}.tr-form{grid-template-columns:1fr 1fr}.tr-form input[type=text]{grid-column:1/-1}.tr-form .tr-wide{grid-column:1/-1}}@media(max-width:560px){.tr-search{grid-template-columns:1fr 1fr}.tr-search-field{grid-column:1/-1}.tr-search-clear{justify-content:center}}';
         echo '</style>';
 
+        $this->render_search_form($public, $token, $filter, $search);
+
         echo '<div class="tr-counts">';
-        $this->count_card($counts['pending'], 'Må kontrolleres', '#f97316', 'pending', $filter, $public, $token);
-        $this->count_card($counts['service'], 'Service', '#7c3aed', 'service', $filter, $public, $token);
-        $this->count_card($counts['maintenance'], 'Ikke klar', '#dc2626', 'maintenance', $filter, $public, $token);
-        $this->count_card($counts['out'], 'Ute nå', '#2563eb', 'out', $filter, $public, $token);
-        $this->count_card($counts['ready'], 'Kontrollert og klar', '#059669', 'ready', $filter, $public, $token);
+        $this->count_card($counts['pending'], 'Må kontrolleres', '#f97316', 'pending', $filter, $search, $public, $token);
+        $this->count_card($counts['service'], 'Service', '#7c3aed', 'service', $filter, $search, $public, $token);
+        $this->count_card($counts['maintenance'], 'Ikke klar', '#dc2626', 'maintenance', $filter, $search, $public, $token);
+        $this->count_card($counts['out'], 'Ute nå', '#2563eb', 'out', $filter, $search, $public, $token);
+        $this->count_card($counts['ready'], 'Kontrollert og klar', '#059669', 'ready', $filter, $search, $public, $token);
         echo '</div>';
 
-        if ($filter !== '') {
+        if ($filter !== '' || $search !== '') {
             $clear_url = $public
                 ? $this->public_url($token)
                 : admin_url('admin.php?page=' . self::PAGE_SLUG);
 
+            $filter_description = [];
+            if ($search !== '') {
+                $filter_description[] = 'søk «' . $search . '»';
+            }
+            if ($filter !== '') {
+                $filter_description[] = $this->status_label($filter);
+            }
+
             echo '<div class="tr-filterbar">';
-            echo '<strong>Viser: ' . esc_html($this->status_label($filter)) . ' (' . esc_html(count($visible_rows)) . ')</strong>';
+            echo '<strong>Viser ' . esc_html(implode(' · ', $filter_description)) . ' (' . esc_html(count($visible_rows)) . ' treff)</strong>';
             echo '<a href="' . esc_url($clear_url) . '">Vis alle</a>';
             echo '</div>';
         }
@@ -632,8 +647,13 @@ final class Equipment_Control
             return;
         }
 
+        if (empty($searched_rows)) {
+            echo '<div class="tr-empty">Ingen utstyr samsvarer med søket «' . esc_html($search) . '».</div>';
+            return;
+        }
+
         if (empty($visible_rows)) {
-            echo '<div class="tr-empty">Ingen utstyr har denne statusen.</div>';
+            echo '<div class="tr-empty">Ingen treff har denne statusen.</div>';
             return;
         }
 
@@ -646,6 +666,7 @@ final class Equipment_Control
             $status = $row['display_status'];
             echo '<tr>';
             echo '<td data-label="Utstyr"><strong>' . esc_html($row['name']) . '</strong>';
+            echo '<div class="tr-small">Utstyrs-ID: #' . esc_html($inventory_id) . '</div>';
             if ($row['quantity'] > 1) {
                 echo '<div class="tr-small">Antall i denne lagerposten: ' . esc_html($row['quantity']) . '</div>';
             }
@@ -686,7 +707,7 @@ final class Equipment_Control
 
             echo '</td>';
             echo '<td data-label="Handling" class="tr-actions">';
-            $this->render_action_form($inventory_id, $status, $public, $token);
+            $this->render_action_form($inventory_id, $status, $public, $token, $filter, $search);
             echo '</td>';
             echo '</tr>';
         }
@@ -695,13 +716,151 @@ final class Equipment_Control
         echo '<p class="tr-small" style="margin:12px 2px 0">«Kontrollert og klar» må registreres etter fysisk kontroll. Etter neste WooCommerce-retur endres status automatisk til «Må kontrolleres». For Hygglo eller annen manuell utleie bruker du «Sett til kontroll» når utstyret kommer tilbake.</p>';
     }
 
-    private function count_card($number, $label, $color, $status, $current_filter, $public, $token)
+    private function render_search_form($public, $token, $filter, $search)
+    {
+        $action_url = $public
+            ? self::app_base_url()
+            : admin_url('admin.php');
+        $clear_search_url = $public
+            ? $this->public_url($token)
+            : admin_url('admin.php?page=' . self::PAGE_SLUG);
+
+        if ($filter !== '') {
+            $clear_search_url = add_query_arg('t_rent_status', $filter, $clear_search_url);
+        }
+
+        echo '<form class="tr-search" method="get" action="' . esc_url($action_url) . '" role="search">';
+        if ($public) {
+            echo '<input type="hidden" name="' . esc_attr(self::PUBLIC_QUERY_VAR) . '" value="1">';
+            echo '<input type="hidden" name="' . esc_attr(self::PUBLIC_TOKEN_PARAM) . '" value="' . esc_attr($token) . '">';
+        } else {
+            echo '<input type="hidden" name="page" value="' . esc_attr(self::PAGE_SLUG) . '">';
+        }
+        if ($filter !== '') {
+            echo '<input type="hidden" name="t_rent_status" value="' . esc_attr($filter) . '">';
+        }
+
+        echo '<div class="tr-search-field">';
+        echo '<label for="t-rent-equipment-search">Søk etter utstyr</label>';
+        echo '<input id="t-rent-equipment-search" type="search" name="' . esc_attr(self::SEARCH_PARAM) . '" value="' . esc_attr($search) . '" maxlength="100" placeholder="Navn, utstyrs-ID eller ordrenummer" autocomplete="off" enterkeyhint="search">';
+        echo '</div>';
+        echo '<button class="tr-search-button" type="submit">Søk</button>';
+        if ($search !== '') {
+            echo '<a class="tr-search-clear" href="' . esc_url($clear_search_url) . '">Tøm søk</a>';
+        }
+        echo '</form>';
+    }
+
+    private function requested_status_filter()
+    {
+        $filter = isset($_GET['t_rent_status']) && is_scalar($_GET['t_rent_status'])
+            ? sanitize_key(wp_unslash($_GET['t_rent_status']))
+            : '';
+
+        return in_array($filter, ['pending', 'service', 'maintenance', 'out', 'ready'], true)
+            ? $filter
+            : '';
+    }
+
+    private function requested_search_query()
+    {
+        $search = isset($_GET[self::SEARCH_PARAM]) && is_scalar($_GET[self::SEARCH_PARAM])
+            ? wp_unslash($_GET[self::SEARCH_PARAM])
+            : '';
+
+        return $this->sanitize_search_query($search);
+    }
+
+    private function sanitize_search_query($search)
+    {
+        $search = trim(sanitize_text_field((string) $search));
+
+        return function_exists('mb_substr')
+            ? mb_substr($search, 0, 100, 'UTF-8')
+            : substr($search, 0, 100);
+    }
+
+    private function equipment_matches_search($row, $search)
+    {
+        $values = [
+            isset($row['name']) ? $row['name'] : '',
+            isset($row['inventory_id']) ? (string) $row['inventory_id'] : '',
+            isset($row['inventory_id']) ? 'utstyr ' . $row['inventory_id'] : '',
+            isset($row['display_status']) ? $this->status_label($row['display_status']) : '',
+            isset($row['reason']) ? $row['reason'] : '',
+            isset($row['checked_by']) ? $row['checked_by'] : '',
+            isset($row['checked_note']) ? $row['checked_note'] : '',
+            isset($row['service_by']) ? $row['service_by'] : '',
+            isset($row['service_note']) ? $row['service_note'] : '',
+        ];
+
+        foreach (['last_returned', 'active_booking', 'next_booking'] as $booking_key) {
+            if (!empty($row[$booking_key]['order_id'])) {
+                $values[] = 'ordre ' . absint($row[$booking_key]['order_id']);
+                $values[] = '#' . absint($row[$booking_key]['order_id']);
+            }
+        }
+
+        $haystack = $this->normalize_search_text(implode(' ', $values));
+        $needle = $this->normalize_search_text($search);
+        $terms = preg_split('/\s+/u', $needle, -1, PREG_SPLIT_NO_EMPTY);
+
+        if (empty($terms)) {
+            return true;
+        }
+
+        foreach ($terms as $term) {
+            if (strpos($haystack, $term) === false) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function normalize_search_text($value)
+    {
+        $value = wp_strip_all_tags((string) $value);
+        if (function_exists('remove_accents')) {
+            $value = remove_accents($value);
+        }
+
+        return function_exists('mb_strtolower')
+            ? mb_strtolower($value, 'UTF-8')
+            : strtolower($value);
+    }
+
+    private function add_posted_dashboard_filters($url)
+    {
+        $args = [];
+        $status = isset($_POST['t_rent_return_status']) && is_scalar($_POST['t_rent_return_status'])
+            ? sanitize_key(wp_unslash($_POST['t_rent_return_status']))
+            : '';
+        $search = isset($_POST['t_rent_return_search']) && is_scalar($_POST['t_rent_return_search'])
+            ? $this->sanitize_search_query(wp_unslash($_POST['t_rent_return_search']))
+            : '';
+
+        if (in_array($status, ['pending', 'service', 'maintenance', 'out', 'ready'], true)) {
+            $args['t_rent_status'] = $status;
+        }
+        if ($search !== '') {
+            $args[self::SEARCH_PARAM] = $search;
+        }
+
+        return empty($args) ? $url : add_query_arg($args, $url);
+    }
+
+    private function count_card($number, $label, $color, $status, $current_filter, $search, $public, $token)
     {
         $base_url = $public
             ? $this->public_url($token)
             : admin_url('admin.php?page=' . self::PAGE_SLUG);
 
-        $url = add_query_arg('t_rent_status', $status, $base_url);
+        $args = ['t_rent_status' => $status];
+        if ($search !== '') {
+            $args[self::SEARCH_PARAM] = $search;
+        }
+        $url = add_query_arg($args, $base_url);
         $active_class = $current_filter === $status ? ' tr-count-active' : '';
 
         echo '<a class="tr-count-link" href="' . esc_url($url) . '" aria-label="' . esc_attr('Vis ' . $label) . '">';
@@ -710,7 +869,7 @@ final class Equipment_Control
         echo '</div></a>';
     }
 
-    private function render_action_form($inventory_id, $status, $public, $token)
+    private function render_action_form($inventory_id, $status, $public, $token, $filter, $search)
     {
         $action_url = $public
             ? $this->public_url($token)
@@ -718,6 +877,12 @@ final class Equipment_Control
 
         echo '<form method="post" action="' . esc_url($action_url) . '" class="tr-form">';
         echo '<input type="hidden" name="t_rent_control_inventory_id" value="' . esc_attr($inventory_id) . '">';
+        if ($filter !== '') {
+            echo '<input type="hidden" name="t_rent_return_status" value="' . esc_attr($filter) . '">';
+        }
+        if ($search !== '') {
+            echo '<input type="hidden" name="t_rent_return_search" value="' . esc_attr($search) . '">';
+        }
 
         if ($public) {
             echo '<input type="hidden" name="t_rent_control_signature" value="' . esc_attr($this->action_signature($inventory_id, $token)) . '">';
