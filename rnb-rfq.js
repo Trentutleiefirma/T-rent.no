@@ -3,6 +3,91 @@ jQuery(document).ready(function ($) {
   const translatedStrings = RFQ_DATA.translated_strings;
   const isEnableGdpr = RFQ_DATA.enable_gdpr;
   const nonce = RFQ_DATA.nonce;
+  const $quoteTrigger = $('#quote-content-confirm').attr('type', 'button');
+  const $quoteSubmit = $('.quote-submit').attr('type', 'button');
+  const $bookingErrorContainer = $('#formError');
+
+  const requiredBookingFields = [
+    {
+      selector: '#pickup-date',
+      message: 'Velg første leiedag.',
+    },
+    {
+      selector: '#pickup-time',
+      message:
+        translatedStrings.pickup_time_required || 'Velg hentetidspunkt.',
+    },
+    {
+      selector: '#dropoff-date',
+      message: 'Velg siste leiedag.',
+    },
+    {
+      selector: '#dropoff-time',
+      message:
+        translatedStrings.dropoff_time_required ||
+        'Velg innleveringstidspunkt.',
+    },
+  ];
+
+  const validateBookingFields = function () {
+    const errors = [];
+
+    requiredBookingFields.forEach(function (field) {
+      const $field = $(field.selector);
+      const isMissing = $field.length && !$.trim($field.val());
+
+      $field.toggleClass('error', Boolean(isMissing));
+      if (isMissing) {
+        errors.push(`<li>${field.message}</li>`);
+      }
+    });
+
+    if (!errors.length) {
+      if ($bookingErrorContainer.attr('data-rnb-rfq-error') === 'true') {
+        $bookingErrorContainer
+          .removeAttr('data-rnb-rfq-error')
+          .empty()
+          .hide();
+      }
+      return true;
+    }
+
+    $bookingErrorContainer
+      .attr('data-rnb-rfq-error', 'true')
+      .html(
+        `<ul class="validate-notice woocommerce-error">${errors.join('')}</ul>`
+      )
+      .show();
+
+    if ($bookingErrorContainer.offset()) {
+      $('html, body').stop(true).animate(
+        {
+          scrollTop: $bookingErrorContainer.offset().top - 50,
+        },
+        300
+      );
+    }
+
+    return false;
+  };
+
+  $quoteTrigger.on('click.rnbRfqBookingFields', function (event) {
+    if (!validateBookingFields()) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  });
+
+  $(document).on(
+    'change.rnbRfqBookingFields',
+    requiredBookingFields.map((field) => field.selector).join(', '),
+    function () {
+      if ($.trim($(this).val())) {
+        $(this).removeClass('error');
+      }
+    }
+  );
+
   /**
    * Configuration for RFQ
    *
@@ -10,7 +95,7 @@ jQuery(document).ready(function ($) {
    * @return null
    */
   $('.quote-submit i').hide();
-  $('#quote-content-confirm').magnificPopup({
+  $quoteTrigger.magnificPopup({
     items: {
       src: '#quote-popup',
       type: 'inline',
@@ -32,7 +117,7 @@ jQuery(document).ready(function ($) {
     },
   });
 
-  $('.quote-submit').on('click', function (e) {
+  $quoteSubmit.on('click', function (e) {
     e.preventDefault();
     $('.quote-submit i').show();
     const cartData = $('.cart').serializeArray();

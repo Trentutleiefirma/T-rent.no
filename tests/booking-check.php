@@ -70,6 +70,7 @@ namespace {
     function delete_post_meta($id, $key) { unset($GLOBALS['quote_meta'][$id][$key]); }
     function current_time($format) { return '2026-10-09 10:00:00'; }
     function __($message, $domain) { return $message; }
+    function esc_html($message) { return $message; }
     function esc_html__($message, $domain) { return $message; }
     function wp_verify_nonce($nonce, $action) { return true; }
     class JsonResponse extends \Exception {
@@ -153,10 +154,27 @@ namespace {
     $now = new \DateTimeImmutable('now', wp_timezone());
     expect_same(false, trent_rnb_pickup_has_notice($now->modify('+50 minutes')->format('Y-m-d'), $now->modify('+50 minutes')->format('H:i'), 100), 'pickup within 50 minutes rejected');
     expect_same(true, trent_rnb_pickup_has_notice($now->modify('+70 minutes')->format('Y-m-d'), $now->modify('+70 minutes')->format('H:i'), 100), 'pickup after 70 minutes allowed');
+    expect_same(true, trent_rnb_pickup_has_notice($now->modify('+70 minutes')->format('m/d/Y'), $now->modify('+70 minutes')->format('H:i'), 100), 'frontend pickup date format accepted');
+    expect_same('pickup_date_required', trent_rnb_pickup_validation_error('', '12:00', 100), 'missing pickup date has a specific error');
+    expect_same('pickup_time_required', trent_rnb_pickup_validation_error('2030-10-11', '', 100), 'missing pickup time has a specific error');
+    expect_same('pickup_datetime_invalid', trent_rnb_pickup_validation_error('2030-02-31', '12:00', 100), 'invalid pickup date has a specific error');
+    expect_same('pickup_too_soon', trent_rnb_pickup_validation_error($now->modify('+50 minutes')->format('Y-m-d'), $now->modify('+50 minutes')->format('H:i'), 100), 'short pickup notice has a specific error');
     expect_same(false, trent_rnb_pickup_has_notice('2030-02-31', '12:00', 100), 'invalid pickup date rejected');
     expect_same(false, trent_rnb_pickup_has_notice('2030-10-11', '', 100), 'missing pickup time rejected');
 
+    $quote_template = file_get_contents(dirname(__DIR__) . '/request-quote.php');
+    expect_same(1, preg_match('/<button\s+type="button"\s+id="quote-content-confirm"/', $quote_template), 'quote trigger cannot submit the rental form');
+    expect_same(1, preg_match('/<button\s+type="button"\s+class="quote-submit"/', $quote_template), 'quote popup button cannot submit the rental form directly');
+
     $validator = new class { use \REDQ_RnB\Traits\Error_Trait; };
+    $missing_date_errors = $validator->handle_form([
+        'product_id' => 100,
+        'inventory_id' => 200,
+        'pickup_date' => '',
+        'pickup_time' => '12:00',
+    ]);
+    expect_same('Velg hentedato.', $missing_date_errors[0], 'direct booking explains the missing pickup date');
+
     $direct_errors = $validator->handle_form([
         'product_id' => 100,
         'inventory_id' => 200,
@@ -164,6 +182,7 @@ namespace {
         'pickup_time' => '',
     ]);
     expect_same(true, !empty($direct_errors), 'direct booking without pickup time rejected');
+    expect_same('Velg hentetid.', $direct_errors[0], 'direct booking explains the missing pickup time');
 
     $request = (new \ReflectionClass(RequestForQuote::class))->newInstanceWithoutConstructor();
     $_POST = [

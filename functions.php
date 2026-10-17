@@ -187,32 +187,40 @@ function rnb_get_default_return_time($product_id, $form_data = [])
 }
 
 /**
- * Allow same-day pickup only after one hour of preparation time.
- * Both the direct cart path and the quote request path call this check.
+ * Validate the selected pickup date and time.
+ *
+ * Returning a stable error code lets the direct-cart and quote paths show the
+ * same useful message instead of treating a missing time as an invalid date.
+ * An empty string means the selection is valid.
  */
-function trent_rnb_pickup_has_notice($date, $time, $product_id)
+function trent_rnb_pickup_validation_error($date, $time, $product_id)
 {
-    if (!is_scalar($date) || !is_scalar($time) || !$product_id) {
-        return false;
+    if (!is_scalar($date) || trim((string) $date) === '') {
+        return 'pickup_date_required';
+    }
+
+    if (!is_scalar($time) || trim((string) $time) === '') {
+        return 'pickup_time_required';
+    }
+
+    if (!$product_id) {
+        return 'pickup_datetime_invalid';
     }
 
     $date = trim((string) $date);
     $time = trim((string) $time);
-    if ($date === '' || $time === '') {
-        return false;
-    }
 
     try {
         $settings = redq_rental_get_settings($product_id, 'conditions');
         $conditions = $settings['conditions'] ?? [];
         $date_formats = array_unique([$conditions['date_format'] ?? 'm/d/Y', 'Y-m-d']);
-        $time_format = ($conditions['time_format'] ?? '24-hours') === '24-hours'
-            ? 'H:i'
-            : 'g:i a';
+        $time_formats = ($conditions['time_format'] ?? '24-hours') === '24-hours'
+            ? ['H:i', 'H:i:s']
+            : ['g:i a', 'h:i a', 'H:i'];
 
         foreach ($date_formats as $date_format) {
             // Quote forms use the product format; the cart may use ISO dates.
-            foreach (array_unique([$time_format, 'H:i']) as $format) {
+            foreach (array_unique($time_formats) as $format) {
                 $pickup = \DateTimeImmutable::createFromFormat(
                     '!' . $date_format . ' ' . $format,
                     $date . ' ' . $time,
@@ -220,7 +228,9 @@ function trent_rnb_pickup_has_notice($date, $time, $product_id)
                 );
                 $errors = \DateTimeImmutable::getLastErrors();
                 if ($pickup && ($errors === false || (!$errors['warning_count'] && !$errors['error_count']))) {
-                    return $pickup >= (new \DateTimeImmutable('now', wp_timezone()))->modify('+60 minutes');
+                    return $pickup >= (new \DateTimeImmutable('now', wp_timezone()))->modify('+60 minutes')
+                        ? ''
+                        : 'pickup_too_soon';
                 }
             }
         }
@@ -228,7 +238,30 @@ function trent_rnb_pickup_has_notice($date, $time, $product_id)
         // An invalid or unsupported date/time must never bypass the notice.
     }
 
-    return false;
+    return 'pickup_datetime_invalid';
+}
+
+/**
+ * Get the customer-facing message for a pickup validation error.
+ */
+function trent_rnb_pickup_validation_message($error_code)
+{
+    $messages = [
+        'pickup_date_required' => __('Velg hentedato.', 'redq-rental'),
+        'pickup_time_required' => __('Velg hentetid.', 'redq-rental'),
+        'pickup_datetime_invalid' => __('Velg en gyldig hentedato og hentetid.', 'redq-rental'),
+        'pickup_too_soon' => __('Hentetiden må være minst én time frem i tid.', 'redq-rental'),
+    ];
+
+    return $messages[$error_code] ?? $messages['pickup_datetime_invalid'];
+}
+
+/**
+ * Backwards-compatible boolean used by older RnB integration points.
+ */
+function trent_rnb_pickup_has_notice($date, $time, $product_id)
+{
+    return trent_rnb_pickup_validation_error($date, $time, $product_id) === '';
 }
 
 function rnb_format_weekend($weekends)

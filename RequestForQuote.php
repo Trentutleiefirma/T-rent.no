@@ -284,14 +284,18 @@ class RequestForQuote
             }
         }
 
-        if (
-            !function_exists('trent_rnb_pickup_has_notice') ||
-            !trent_rnb_pickup_has_notice($pickup_date, $pickup_time, $product_id)
-        ) {
+        $pickup_error = function_exists('trent_rnb_pickup_validation_error')
+            ? trent_rnb_pickup_validation_error($pickup_date, $pickup_time, $product_id)
+            : 'pickup_datetime_invalid';
+
+        if ($pickup_error !== '') {
+            $message = function_exists('trent_rnb_pickup_validation_message')
+                ? trent_rnb_pickup_validation_message($pickup_error)
+                : __('Velg en gyldig hentedato og hentetid.', 'redq-rental');
             wp_send_json([
                 'success' => false,
                 'status_code' => 400,
-                'message' => esc_html__('Velg gyldig hentedato og hentetid minst én time frem i tid.', 'redq-rental'),
+                'message' => esc_html($message),
             ]);
         }
 
