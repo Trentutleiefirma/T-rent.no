@@ -22,7 +22,7 @@ if ($show_quote === 'open') {
         $customer_phone = get_user_meta($current_user->ID, 'billing_phone', true);
         $customer_email = get_user_meta($current_user->ID, 'billing_email', true);
     } ?>
-    <button id="quote-content-confirm" class="redq_request_for_a_quote btn-book-now button"><?php echo esc_html($product->single_request_for_quote_text()); ?></button>
+    <button type="button" id="quote-content-confirm" class="redq_request_for_a_quote btn-book-now button"><?php echo esc_html($product->single_request_for_quote_text()); ?></button>
 
     <div id="quote-popup" class="rnb-popup mfp-hide">
         <?php if (!is_user_logged_in() && $user_pass === 'no') : ?>
@@ -69,7 +69,7 @@ if ($show_quote === 'open') {
         <?php endif; ?>
 
         <p>
-            <button class="quote-submit"><?php echo $labels['submit_button']; ?><i class="fas fa-spinner fa-pulse fa-fw"></i></button>
+            <button type="button" class="quote-submit"><?php echo $labels['submit_button']; ?><i class="fas fa-spinner fa-pulse fa-fw"></i></button>
         </p>
         <div class="quote-modal-message"></div>
     </div>

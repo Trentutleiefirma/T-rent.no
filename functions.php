@@ -95,6 +95,34 @@ function trent_rnb_quote_total_for_cart($quote_total, $calculated_total, $daily_
     return $quote_total;
 }
 
+/**
+ * Check whether an add-to-cart request belongs to an accepted RnB quote.
+ *
+ * Accepted quote links are allowed to reach checkout after the original
+ * preparation window has passed. Verify both the quote status and product so
+ * an arbitrary quote_id cannot be used to bypass normal product validation.
+ */
+function trent_rnb_is_accepted_quote_checkout($quote_id, $product_id)
+{
+    $quote_id = absint($quote_id);
+    $product_id = absint($product_id);
+
+    if (!$quote_id || !$product_id) {
+        return false;
+    }
+
+    if (get_post_type($quote_id) !== 'request_quote' || get_post_status($quote_id) !== 'quote-accepted') {
+        return false;
+    }
+
+    $quote_product_id = absint(get_post_meta($quote_id, 'add-to-cart', true));
+    if (!$quote_product_id) {
+        $quote_product_id = absint(get_post_meta($quote_id, '_product_id', true));
+    }
+
+    return $quote_product_id === $product_id;
+}
+
 function rnb_get_default_inventory_id($product_id = null)
 {
     if (empty($product_id)) {
@@ -187,32 +215,40 @@ function rnb_get_default_return_time($product_id, $form_data = [])
 }
 
 /**
- * Allow same-day pickup only after one hour of preparation time.
- * Both the direct cart path and the quote request path call this check.
+ * Validate the selected pickup date and time.
+ *
+ * Returning a stable error code lets the direct-cart and quote paths show the
+ * same useful message instead of treating a missing time as an invalid date.
+ * An empty string means the selection is valid.
  */
-function trent_rnb_pickup_has_notice($date, $time, $product_id)
+function trent_rnb_pickup_validation_error($date, $time, $product_id)
 {
-    if (!is_scalar($date) || !is_scalar($time) || !$product_id) {
-        return false;
+    if (!is_scalar($date) || trim((string) $date) === '') {
+        return 'pickup_date_required';
+    }
+
+    if (!is_scalar($time) || trim((string) $time) === '') {
+        return 'pickup_time_required';
+    }
+
+    if (!$product_id) {
+        return 'pickup_datetime_invalid';
     }
 
     $date = trim((string) $date);
     $time = trim((string) $time);
-    if ($date === '' || $time === '') {
-        return false;
-    }
 
     try {
         $settings = redq_rental_get_settings($product_id, 'conditions');
         $conditions = $settings['conditions'] ?? [];
         $date_formats = array_unique([$conditions['date_format'] ?? 'm/d/Y', 'Y-m-d']);
-        $time_format = ($conditions['time_format'] ?? '24-hours') === '24-hours'
-            ? 'H:i'
-            : 'g:i a';
+        $time_formats = ($conditions['time_format'] ?? '24-hours') === '24-hours'
+            ? ['H:i', 'H:i:s']
+            : ['g:i a', 'h:i a', 'H:i'];
 
         foreach ($date_formats as $date_format) {
             // Quote forms use the product format; the cart may use ISO dates.
-            foreach (array_unique([$time_format, 'H:i']) as $format) {
+            foreach (array_unique($time_formats) as $format) {
                 $pickup = \DateTimeImmutable::createFromFormat(
                     '!' . $date_format . ' ' . $format,
                     $date . ' ' . $time,
@@ -220,7 +256,9 @@ function trent_rnb_pickup_has_notice($date, $time, $product_id)
                 );
                 $errors = \DateTimeImmutable::getLastErrors();
                 if ($pickup && ($errors === false || (!$errors['warning_count'] && !$errors['error_count']))) {
-                    return $pickup >= (new \DateTimeImmutable('now', wp_timezone()))->modify('+60 minutes');
+                    return $pickup >= (new \DateTimeImmutable('now', wp_timezone()))->modify('+60 minutes')
+                        ? ''
+                        : 'pickup_too_soon';
                 }
             }
         }
@@ -228,7 +266,30 @@ function trent_rnb_pickup_has_notice($date, $time, $product_id)
         // An invalid or unsupported date/time must never bypass the notice.
     }
 
-    return false;
+    return 'pickup_datetime_invalid';
+}
+
+/**
+ * Get the customer-facing message for a pickup validation error.
+ */
+function trent_rnb_pickup_validation_message($error_code)
+{
+    $messages = [
+        'pickup_date_required' => __('Velg hentedato.', 'redq-rental'),
+        'pickup_time_required' => __('Velg hentetid.', 'redq-rental'),
+        'pickup_datetime_invalid' => __('Velg en gyldig hentedato og hentetid.', 'redq-rental'),
+        'pickup_too_soon' => __('Hentetiden må være minst én time frem i tid.', 'redq-rental'),
+    ];
+
+    return $messages[$error_code] ?? $messages['pickup_datetime_invalid'];
+}
+
+/**
+ * Backwards-compatible boolean used by older RnB integration points.
+ */
+function trent_rnb_pickup_has_notice($date, $time, $product_id)
+{
+    return trent_rnb_pickup_validation_error($date, $time, $product_id) === '';
 }
 
 function rnb_format_weekend($weekends)
@@ -341,6 +402,10 @@ add_action('wp_enqueue_scripts', function () {
         return;
     }
 
+    $site_timezone = function_exists('wp_timezone_string') ? wp_timezone_string() : 'UTC';
+    $site_timezone = $site_timezone !== '' ? $site_timezone : 'UTC';
+    $site_timezone_offset = wp_timezone()->getOffset(new \DateTimeImmutable('now', wp_timezone()));
+
     $trent_timepicker_fix = <<<'JS'
 (function ($) {
   $(function () {
@@ -350,6 +415,8 @@ add_action('wp_enqueue_scripts', function () {
 
     var originalCalendarInit = window.RNB_CALENDER_ACTION.init;
     var trentCalendarData = null;
+    var trentSiteTimezone = __TRENT_SITE_TIMEZONE__;
+    var trentSiteUtcOffsetSeconds = __TRENT_SITE_UTC_OFFSET__;
 
     function timeToMinutes(time) {
       if (!time) {
@@ -428,13 +495,77 @@ add_action('wp_enqueue_scripts', function () {
       return dateObj && !isNaN(dateObj.getTime()) ? dateObj : null;
     }
 
-    function sameLocalDate(a, b) {
+    function getSiteNow() {
+      var current = new Date();
+
+      if (
+        trentSiteTimezone &&
+        window.Intl &&
+        typeof window.Intl.DateTimeFormat === 'function'
+      ) {
+        try {
+          var formatter = new window.Intl.DateTimeFormat('en-US', {
+            timeZone: trentSiteTimezone,
+            year: 'numeric',
+            month: 'numeric',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: 'numeric',
+            second: 'numeric',
+            hourCycle: 'h23',
+          });
+
+          if (typeof formatter.formatToParts === 'function') {
+            var values = {};
+            formatter.formatToParts(current).forEach(function (part) {
+              if (part.type !== 'literal') {
+                values[part.type] = parseInt(part.value, 10);
+              }
+            });
+
+            if (
+              Number.isFinite(values.year) &&
+              Number.isFinite(values.month) &&
+              Number.isFinite(values.day) &&
+              Number.isFinite(values.hour) &&
+              Number.isFinite(values.minute)
+            ) {
+              return {
+                year: values.year,
+                month: values.month - 1,
+                day: values.day,
+                hours: values.hour % 24,
+                minutes: values.minute,
+                seconds: Number.isFinite(values.second) ? values.second : 0,
+              };
+            }
+          }
+        } catch (error) {
+          // A fixed UTC offset below covers browsers without IANA support.
+        }
+      }
+
+      var shifted = new Date(
+        current.getTime() + trentSiteUtcOffsetSeconds * 1000
+      );
+
+      return {
+        year: shifted.getUTCFullYear(),
+        month: shifted.getUTCMonth(),
+        day: shifted.getUTCDate(),
+        hours: shifted.getUTCHours(),
+        minutes: shifted.getUTCMinutes(),
+        seconds: shifted.getUTCSeconds(),
+      };
+    }
+
+    function sameSiteDate(date, siteNow) {
       return !!(
-        a &&
-        b &&
-        a.getFullYear() === b.getFullYear() &&
-        a.getMonth() === b.getMonth() &&
-        a.getDate() === b.getDate()
+        date &&
+        siteNow &&
+        date.getFullYear() === siteNow.year &&
+        date.getMonth() === siteNow.month &&
+        date.getDate() === siteNow.day
       );
     }
 
@@ -465,12 +596,13 @@ add_action('wp_enqueue_scripts', function () {
       }
 
       var minimumMinutes = openMinutes;
-      var now = new Date();
+      var now = getSiteNow();
 
-      // Same-day pickup requires one hour of preparation time.
-      if (sameLocalDate(selectedDate, now)) {
-        var nowMinutes = now.getHours() * 60 + now.getMinutes();
-        if (now.getSeconds() > 0) {
+      // Use the shop timezone, not the visitor's device timezone. Otherwise a
+      // device set to UTC can be offered slots that the Norway server rejects.
+      if (sameSiteDate(selectedDate, now)) {
+        var nowMinutes = now.hours * 60 + now.minutes;
+        if (now.seconds > 0) {
           nowMinutes += 1;
         }
         if (isPickup) {
@@ -636,6 +768,12 @@ add_action('wp_enqueue_scripts', function () {
   });
 })(jQuery);
 JS;
+
+    $trent_timepicker_fix = str_replace(
+        ['__TRENT_SITE_TIMEZONE__', '__TRENT_SITE_UTC_OFFSET__'],
+        [wp_json_encode($site_timezone), (string) $site_timezone_offset],
+        $trent_timepicker_fix
+    );
 
     wp_add_inline_script('rnb-calendar', $trent_timepicker_fix, 'after');
 }, 100);

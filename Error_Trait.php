@@ -46,7 +46,7 @@ trait Error_Trait
         }
 
         if (!isset($args['pickup_date']) || empty($args['pickup_date'])) {
-            $errors[] = esc_html__('Sorry! pickup date is required', 'redq-rental');
+            $errors[] = esc_html__('Velg hentedato.', 'redq-rental');
         }
 
         if (count($errors)) {
@@ -63,13 +63,18 @@ trait Error_Trait
 
         // Reject missing and malformed pickup fields before Carbon or pricing
         // can supply a default time. Checkout of an existing quote is exempt.
-        if (
-            !$checkout &&
-            (!function_exists('trent_rnb_pickup_has_notice') ||
-                !trent_rnb_pickup_has_notice($args['pickup_date'], $args['pickup_time'] ?? '', $product_id))
-        ) {
-            $errors[] = esc_html__('Velg gyldig hentedato og hentetid minst én time frem i tid.', 'redq-rental');
-            return $errors;
+        if (!$checkout) {
+            $pickup_error = function_exists('trent_rnb_pickup_validation_error')
+                ? trent_rnb_pickup_validation_error($args['pickup_date'], $args['pickup_time'] ?? '', $product_id)
+                : 'pickup_datetime_invalid';
+
+            if ($pickup_error !== '') {
+                $message = function_exists('trent_rnb_pickup_validation_message')
+                    ? trent_rnb_pickup_validation_message($pickup_error)
+                    : __('Velg en gyldig hentedato og hentetid.', 'redq-rental');
+                $errors[] = esc_html($message);
+                return $errors;
+            }
         }
 
         /*

@@ -34,11 +34,16 @@ namespace {
 
     $GLOBALS['quote_meta'] = [];
     $GLOBALS['order_statuses'] = [11 => 'processing', 12 => 'pending'];
+    $GLOBALS['post_types'] = [];
+    $GLOBALS['post_statuses'] = [];
 
     function add_action(...$args) {}
     function add_filter(...$args) {}
     function apply_filters($name, $value, ...$args) { return $value; }
     function absint($value) { return abs((int) $value); }
+    function is_shop() { return false; }
+    function sanitize_text_field($value) { return trim((string) $value); }
+    function wp_unslash($value) { return $value; }
     function wp_parse_args($args, $defaults) { return array_merge($defaults, $args); }
     function wp_date($format) { return date($format); }
     function wp_timezone() { return new \DateTimeZone('Europe/Oslo'); }
@@ -66,10 +71,18 @@ namespace {
     function is_email($email) { return filter_var($email, FILTER_VALIDATE_EMAIL); }
     function rnb_get_quote_admin_profile() { return ['email' => 'owner@example.test', 'name' => 'T-Rent']; }
     function get_post_meta($id, $key, $single) { return $GLOBALS['quote_meta'][$id][$key] ?? ''; }
+    function get_post_type($id) { return $GLOBALS['post_types'][$id] ?? ''; }
+    function get_post_status($id) { return $GLOBALS['post_statuses'][$id] ?? ''; }
+    function wc_get_product($id) {
+        return $id ? new class {
+            public function get_type() { return 'redq_rental'; }
+        } : false;
+    }
     function update_post_meta($id, $key, $value) { $GLOBALS['quote_meta'][$id][$key] = $value; }
     function delete_post_meta($id, $key) { unset($GLOBALS['quote_meta'][$id][$key]); }
     function current_time($format) { return '2026-10-09 10:00:00'; }
     function __($message, $domain) { return $message; }
+    function esc_html($message) { return $message; }
     function esc_html__($message, $domain) { return $message; }
     function wp_verify_nonce($nonce, $action) { return true; }
     class JsonResponse extends \Exception {
@@ -136,6 +149,38 @@ namespace {
         'negotiated quote total stays unchanged'
     );
 
+    $GLOBALS['quote_meta'][882]['add-to-cart'] = 736;
+    $GLOBALS['quote_meta'][882]['unformatted_order_quote_meta'] = json_encode([
+        ['name' => 'pickup_time', 'value' => '18:30'],
+        ['name' => 'dropoff_time', 'value' => '20:00'],
+    ]);
+    $GLOBALS['quote_meta'][882]['order_quote_meta'] = json_encode([
+        ['name' => 'pickup_time', 'value' => '00:00'],
+        ['name' => 'dropoff_time', 'value' => '23:59'],
+    ]);
+    $GLOBALS['post_types'][882] = 'request_quote';
+    $GLOBALS['post_statuses'][882] = 'quote-accepted';
+    expect_same(true, trent_rnb_is_accepted_quote_checkout(882, 736), 'accepted quote checkout recognized');
+    expect_same(false, trent_rnb_is_accepted_quote_checkout(882, 999), 'quote cannot bypass another product');
+    $GLOBALS['post_statuses'][882] = 'quote-pending';
+    expect_same(false, trent_rnb_is_accepted_quote_checkout(882, 736), 'pending quote cannot bypass pickup notice');
+    $GLOBALS['post_statuses'][882] = 'quote-accepted';
+
+    $restored_quote = $calculator->restore_quote_selected_times([
+        'pickup_time' => '00:00',
+        'dropoff_time' => '23:59',
+        'return_time' => '23:59',
+    ], 882);
+    expect_same('18:30', $restored_quote['pickup_time'], 'accepted quote restores original pickup time');
+    expect_same('20:00', $restored_quote['dropoff_time'], 'accepted quote restores original dropoff time');
+
+    $cart_handler_source = file_get_contents(dirname(__DIR__) . '/CartHandler.php');
+    expect_same(
+        1,
+        preg_match('/handle_form\(\$_POST,\s*\$is_quote_checkout\)/', $cart_handler_source),
+        'accepted quote uses checkout validation during add to cart'
+    );
+
     $long = $make_booking('2026-10-09 19:00', '2026-10-11 20:00');
     expect_same(['2026-10-10', '2026-10-11'], $long['booked_dates']['saved'], 'multi-day paid dates');
 
@@ -153,10 +198,27 @@ namespace {
     $now = new \DateTimeImmutable('now', wp_timezone());
     expect_same(false, trent_rnb_pickup_has_notice($now->modify('+50 minutes')->format('Y-m-d'), $now->modify('+50 minutes')->format('H:i'), 100), 'pickup within 50 minutes rejected');
     expect_same(true, trent_rnb_pickup_has_notice($now->modify('+70 minutes')->format('Y-m-d'), $now->modify('+70 minutes')->format('H:i'), 100), 'pickup after 70 minutes allowed');
+    expect_same(true, trent_rnb_pickup_has_notice($now->modify('+70 minutes')->format('m/d/Y'), $now->modify('+70 minutes')->format('H:i'), 100), 'frontend pickup date format accepted');
+    expect_same('pickup_date_required', trent_rnb_pickup_validation_error('', '12:00', 100), 'missing pickup date has a specific error');
+    expect_same('pickup_time_required', trent_rnb_pickup_validation_error('2030-10-11', '', 100), 'missing pickup time has a specific error');
+    expect_same('pickup_datetime_invalid', trent_rnb_pickup_validation_error('2030-02-31', '12:00', 100), 'invalid pickup date has a specific error');
+    expect_same('pickup_too_soon', trent_rnb_pickup_validation_error($now->modify('+50 minutes')->format('Y-m-d'), $now->modify('+50 minutes')->format('H:i'), 100), 'short pickup notice has a specific error');
     expect_same(false, trent_rnb_pickup_has_notice('2030-02-31', '12:00', 100), 'invalid pickup date rejected');
     expect_same(false, trent_rnb_pickup_has_notice('2030-10-11', '', 100), 'missing pickup time rejected');
 
+    $quote_template = file_get_contents(dirname(__DIR__) . '/request-quote.php');
+    expect_same(1, preg_match('/<button\s+type="button"\s+id="quote-content-confirm"/', $quote_template), 'quote trigger cannot submit the rental form');
+    expect_same(1, preg_match('/<button\s+type="button"\s+class="quote-submit"/', $quote_template), 'quote popup button cannot submit the rental form directly');
+
     $validator = new class { use \REDQ_RnB\Traits\Error_Trait; };
+    $missing_date_errors = $validator->handle_form([
+        'product_id' => 100,
+        'inventory_id' => 200,
+        'pickup_date' => '',
+        'pickup_time' => '12:00',
+    ]);
+    expect_same('Velg hentedato.', $missing_date_errors[0], 'direct booking explains the missing pickup date');
+
     $direct_errors = $validator->handle_form([
         'product_id' => 100,
         'inventory_id' => 200,
@@ -164,6 +226,7 @@ namespace {
         'pickup_time' => '',
     ]);
     expect_same(true, !empty($direct_errors), 'direct booking without pickup time rejected');
+    expect_same('Velg hentetid.', $direct_errors[0], 'direct booking explains the missing pickup time');
 
     $request = (new \ReflectionClass(RequestForQuote::class))->newInstanceWithoutConstructor();
     $_POST = [
