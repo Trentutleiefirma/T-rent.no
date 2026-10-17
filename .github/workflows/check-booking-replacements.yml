@@ -26,3 +26,7 @@ jobs:
         run: |
           node --check rnb-calendar.js
           node --check rnb-quote.js
+          node --check rnb-rfq.js
+          node --check tests/timezone-picker-check.js
+      - name: Check shop-timezone pickup slots
+        run: node tests/timezone-picker-check.js

@@ -374,6 +374,10 @@ add_action('wp_enqueue_scripts', function () {
         return;
     }
 
+    $site_timezone = function_exists('wp_timezone_string') ? wp_timezone_string() : 'UTC';
+    $site_timezone = $site_timezone !== '' ? $site_timezone : 'UTC';
+    $site_timezone_offset = wp_timezone()->getOffset(new \DateTimeImmutable('now', wp_timezone()));
+
     $trent_timepicker_fix = <<<'JS'
 (function ($) {
   $(function () {
@@ -383,6 +387,8 @@ add_action('wp_enqueue_scripts', function () {
 
     var originalCalendarInit = window.RNB_CALENDER_ACTION.init;
     var trentCalendarData = null;
+    var trentSiteTimezone = __TRENT_SITE_TIMEZONE__;
+    var trentSiteUtcOffsetSeconds = __TRENT_SITE_UTC_OFFSET__;
 
     function timeToMinutes(time) {
       if (!time) {
@@ -461,13 +467,77 @@ add_action('wp_enqueue_scripts', function () {
       return dateObj && !isNaN(dateObj.getTime()) ? dateObj : null;
     }
 
-    function sameLocalDate(a, b) {
+    function getSiteNow() {
+      var current = new Date();
+
+      if (
+        trentSiteTimezone &&
+        window.Intl &&
+        typeof window.Intl.DateTimeFormat === 'function'
+      ) {
+        try {
+          var formatter = new window.Intl.DateTimeFormat('en-US', {
+            timeZone: trentSiteTimezone,
+            year: 'numeric',
+            month: 'numeric',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: 'numeric',
+            second: 'numeric',
+            hourCycle: 'h23',
+          });
+
+          if (typeof formatter.formatToParts === 'function') {
+            var values = {};
+            formatter.formatToParts(current).forEach(function (part) {
+              if (part.type !== 'literal') {
+                values[part.type] = parseInt(part.value, 10);
+              }
+            });
+
+            if (
+              Number.isFinite(values.year) &&
+              Number.isFinite(values.month) &&
+              Number.isFinite(values.day) &&
+              Number.isFinite(values.hour) &&
+              Number.isFinite(values.minute)
+            ) {
+              return {
+                year: values.year,
+                month: values.month - 1,
+                day: values.day,
+                hours: values.hour % 24,
+                minutes: values.minute,
+                seconds: Number.isFinite(values.second) ? values.second : 0,
+              };
+            }
+          }
+        } catch (error) {
+          // A fixed UTC offset below covers browsers without IANA support.
+        }
+      }
+
+      var shifted = new Date(
+        current.getTime() + trentSiteUtcOffsetSeconds * 1000
+      );
+
+      return {
+        year: shifted.getUTCFullYear(),
+        month: shifted.getUTCMonth(),
+        day: shifted.getUTCDate(),
+        hours: shifted.getUTCHours(),
+        minutes: shifted.getUTCMinutes(),
+        seconds: shifted.getUTCSeconds(),
+      };
+    }
+
+    function sameSiteDate(date, siteNow) {
       return !!(
-        a &&
-        b &&
-        a.getFullYear() === b.getFullYear() &&
-        a.getMonth() === b.getMonth() &&
-        a.getDate() === b.getDate()
+        date &&
+        siteNow &&
+        date.getFullYear() === siteNow.year &&
+        date.getMonth() === siteNow.month &&
+        date.getDate() === siteNow.day
       );
     }
 
@@ -498,12 +568,13 @@ add_action('wp_enqueue_scripts', function () {
       }
 
       var minimumMinutes = openMinutes;
-      var now = new Date();
+      var now = getSiteNow();
 
-      // Same-day pickup requires one hour of preparation time.
-      if (sameLocalDate(selectedDate, now)) {
-        var nowMinutes = now.getHours() * 60 + now.getMinutes();
-        if (now.getSeconds() > 0) {
+      // Use the shop timezone, not the visitor's device timezone. Otherwise a
+      // device set to UTC can be offered slots that the Norway server rejects.
+      if (sameSiteDate(selectedDate, now)) {
+        var nowMinutes = now.hours * 60 + now.minutes;
+        if (now.seconds > 0) {
           nowMinutes += 1;
         }
         if (isPickup) {
@@ -669,6 +740,12 @@ add_action('wp_enqueue_scripts', function () {
   });
 })(jQuery);
 JS;
+
+    $trent_timepicker_fix = str_replace(
+        ['__TRENT_SITE_TIMEZONE__', '__TRENT_SITE_UTC_OFFSET__'],
+        [wp_json_encode($site_timezone), (string) $site_timezone_offset],
+        $trent_timepicker_fix
+    );
 
     wp_add_inline_script('rnb-calendar', $trent_timepicker_fix, 'after');
 }, 100);
