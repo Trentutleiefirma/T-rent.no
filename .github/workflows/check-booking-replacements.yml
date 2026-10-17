@@ -15,7 +15,7 @@ jobs:
           coverage: none
       - name: Check PHP syntax
         run: |
-          for file in Ajax.php Data_Trait.php Period_Trait.php functions.php Error_Trait.php RequestForQuote.php Email.php header.php tests/booking-check.php; do
+          for file in Ajax.php CartHandler.php Data_Trait.php Period_Trait.php functions.php Error_Trait.php RequestForQuote.php Email.php header.php tests/booking-check.php; do
             php -l "$file"
           done
       - name: Install Carbon for isolated booking checks

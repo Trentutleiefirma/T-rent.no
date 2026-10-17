@@ -64,8 +64,21 @@ class CartHandler extends Booking_Manager
             return false;
         }
 
+        $quote_id = isset($_POST['quote_id']) ? absint($_POST['quote_id']) : 0;
+        $is_quote_checkout = function_exists('trent_rnb_is_accepted_quote_checkout')
+            && trent_rnb_is_accepted_quote_checkout($quote_id, $product_id);
+
+        // The custom accepted-quote page submits placeholder times
+        // (00:00/23:59). Restore the customer's actual selection before RnB
+        // validates availability or prepares the cart item.
+        if ($is_quote_checkout && method_exists($this, 'restore_quote_selected_times')) {
+            $_POST = $this->restore_quote_selected_times($_POST, $quote_id);
+        }
+
         $_POST = $this->rearrange_form_data($_POST);
-        $has_errors = $this->handle_form($_POST);
+        // A customer may pay an already accepted quote later. Do not apply the
+        // one-hour preparation rule a second time during quote checkout.
+        $has_errors = $this->handle_form($_POST, $is_quote_checkout);
 
         if ($has_errors && !empty($has_errors)) {
             wc_add_notice(sprintf(__('%s', 'redq-rental'), implode(',', $has_errors)), 'error');
@@ -93,6 +106,14 @@ class CartHandler extends Booking_Manager
 
         if (isset($cart_item_meta['rental_data']['quote_id'])) {
             return $cart_item_meta;
+        }
+
+        $quote_id = isset($_POST['quote_id']) ? absint($_POST['quote_id']) : 0;
+        $is_quote_checkout = function_exists('trent_rnb_is_accepted_quote_checkout')
+            && trent_rnb_is_accepted_quote_checkout($quote_id, $product_id);
+
+        if ($is_quote_checkout && method_exists($this, 'restore_quote_selected_times')) {
+            $_POST = $this->restore_quote_selected_times($_POST, $quote_id);
         }
 
         $_POST = $this->rearrange_form_data($_POST);

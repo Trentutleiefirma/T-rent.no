@@ -161,7 +161,9 @@ jQuery(document).ready(function ($) {
         proceed = false; //set do not proceed flag
       }
       //check invalid email
-      const email_reg = /^([\w-\.]+@([\w-]+\.)+[\w-]{2,4})?$/;
+      // Accept valid aliases such as name+booking@example.com. The previous
+      // expression rejected plus-addresses before the request reached RnB.
+      const email_reg = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (
         $(this).attr('type') === 'email' &&
         !email_reg.test($.trim($(this).val()))

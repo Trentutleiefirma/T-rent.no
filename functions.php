@@ -95,6 +95,34 @@ function trent_rnb_quote_total_for_cart($quote_total, $calculated_total, $daily_
     return $quote_total;
 }
 
+/**
+ * Check whether an add-to-cart request belongs to an accepted RnB quote.
+ *
+ * Accepted quote links are allowed to reach checkout after the original
+ * preparation window has passed. Verify both the quote status and product so
+ * an arbitrary quote_id cannot be used to bypass normal product validation.
+ */
+function trent_rnb_is_accepted_quote_checkout($quote_id, $product_id)
+{
+    $quote_id = absint($quote_id);
+    $product_id = absint($product_id);
+
+    if (!$quote_id || !$product_id) {
+        return false;
+    }
+
+    if (get_post_type($quote_id) !== 'request_quote' || get_post_status($quote_id) !== 'quote-accepted') {
+        return false;
+    }
+
+    $quote_product_id = absint(get_post_meta($quote_id, 'add-to-cart', true));
+    if (!$quote_product_id) {
+        $quote_product_id = absint(get_post_meta($quote_id, '_product_id', true));
+    }
+
+    return $quote_product_id === $product_id;
+}
+
 function rnb_get_default_inventory_id($product_id = null)
 {
     if (empty($product_id)) {

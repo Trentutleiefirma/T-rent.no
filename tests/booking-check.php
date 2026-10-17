@@ -34,11 +34,16 @@ namespace {
 
     $GLOBALS['quote_meta'] = [];
     $GLOBALS['order_statuses'] = [11 => 'processing', 12 => 'pending'];
+    $GLOBALS['post_types'] = [];
+    $GLOBALS['post_statuses'] = [];
 
     function add_action(...$args) {}
     function add_filter(...$args) {}
     function apply_filters($name, $value, ...$args) { return $value; }
     function absint($value) { return abs((int) $value); }
+    function is_shop() { return false; }
+    function sanitize_text_field($value) { return trim((string) $value); }
+    function wp_unslash($value) { return $value; }
     function wp_parse_args($args, $defaults) { return array_merge($defaults, $args); }
     function wp_date($format) { return date($format); }
     function wp_timezone() { return new \DateTimeZone('Europe/Oslo'); }
@@ -66,6 +71,13 @@ namespace {
     function is_email($email) { return filter_var($email, FILTER_VALIDATE_EMAIL); }
     function rnb_get_quote_admin_profile() { return ['email' => 'owner@example.test', 'name' => 'T-Rent']; }
     function get_post_meta($id, $key, $single) { return $GLOBALS['quote_meta'][$id][$key] ?? ''; }
+    function get_post_type($id) { return $GLOBALS['post_types'][$id] ?? ''; }
+    function get_post_status($id) { return $GLOBALS['post_statuses'][$id] ?? ''; }
+    function wc_get_product($id) {
+        return $id ? new class {
+            public function get_type() { return 'redq_rental'; }
+        } : false;
+    }
     function update_post_meta($id, $key, $value) { $GLOBALS['quote_meta'][$id][$key] = $value; }
     function delete_post_meta($id, $key) { unset($GLOBALS['quote_meta'][$id][$key]); }
     function current_time($format) { return '2026-10-09 10:00:00'; }
@@ -135,6 +147,38 @@ namespace {
         1399.0,
         trent_rnb_quote_total_for_cart(1399, 1299, 299, 1),
         'negotiated quote total stays unchanged'
+    );
+
+    $GLOBALS['quote_meta'][882]['add-to-cart'] = 736;
+    $GLOBALS['quote_meta'][882]['unformatted_order_quote_meta'] = json_encode([
+        ['name' => 'pickup_time', 'value' => '18:30'],
+        ['name' => 'dropoff_time', 'value' => '20:00'],
+    ]);
+    $GLOBALS['quote_meta'][882]['order_quote_meta'] = json_encode([
+        ['name' => 'pickup_time', 'value' => '00:00'],
+        ['name' => 'dropoff_time', 'value' => '23:59'],
+    ]);
+    $GLOBALS['post_types'][882] = 'request_quote';
+    $GLOBALS['post_statuses'][882] = 'quote-accepted';
+    expect_same(true, trent_rnb_is_accepted_quote_checkout(882, 736), 'accepted quote checkout recognized');
+    expect_same(false, trent_rnb_is_accepted_quote_checkout(882, 999), 'quote cannot bypass another product');
+    $GLOBALS['post_statuses'][882] = 'quote-pending';
+    expect_same(false, trent_rnb_is_accepted_quote_checkout(882, 736), 'pending quote cannot bypass pickup notice');
+    $GLOBALS['post_statuses'][882] = 'quote-accepted';
+
+    $restored_quote = $calculator->restore_quote_selected_times([
+        'pickup_time' => '00:00',
+        'dropoff_time' => '23:59',
+        'return_time' => '23:59',
+    ], 882);
+    expect_same('18:30', $restored_quote['pickup_time'], 'accepted quote restores original pickup time');
+    expect_same('20:00', $restored_quote['dropoff_time'], 'accepted quote restores original dropoff time');
+
+    $cart_handler_source = file_get_contents(dirname(__DIR__) . '/CartHandler.php');
+    expect_same(
+        1,
+        preg_match('/handle_form\(\$_POST,\s*\$is_quote_checkout\)/', $cart_handler_source),
+        'accepted quote uses checkout validation during add to cart'
     );
 
     $long = $make_booking('2026-10-09 19:00', '2026-10-11 20:00');
