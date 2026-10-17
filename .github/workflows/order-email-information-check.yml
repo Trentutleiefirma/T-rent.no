@@ -1,0 +1,48 @@
+name: T-Rent order email plugin
+
+on:
+  pull_request:
+    paths:
+      - 't-rent-ordreinformasjon/**'
+      - 'tests/order-email-information-check.php'
+      - 'releases/t-rent-ordreinformasjon-*.zip'
+      - '.github/workflows/order-email-information-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ['7.4', '8.3']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+      - name: Download WordPress test support
+        run: |
+          curl --fail --location --silent --show-error \
+            https://wordpress.org/wordpress-6.8.3.tar.gz \
+            --output /tmp/wordpress.tar.gz
+          tar -xzf /tmp/wordpress.tar.gz -C /tmp
+      - name: Check PHP syntax
+        run: |
+          php -l t-rent-ordreinformasjon/t-rent-ordreinformasjon.php
+          php -l t-rent-ordreinformasjon/tests/order-email-information-check.php
+          php -l tests/order-email-information-check.php
+      - name: Run regression checks
+        run: php tests/order-email-information-check.php /tmp/wordpress/wp-includes
+      - name: Verify installable ZIP
+        run: |
+          unzip -t releases/t-rent-ordreinformasjon-1.1.1.zip
+          test_dir="$(mktemp -d)"
+          unzip -q releases/t-rent-ordreinformasjon-1.1.1.zip -d "$test_dir"
+          cmp t-rent-ordreinformasjon/t-rent-ordreinformasjon.php \
+            "$test_dir/t-rent-ordreinformasjon/t-rent-ordreinformasjon.php"
+          cmp t-rent-ordreinformasjon/tests/order-email-information-check.php \
+            "$test_dir/t-rent-ordreinformasjon/tests/order-email-information-check.php"
