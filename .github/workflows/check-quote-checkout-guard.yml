@@ -6,6 +6,7 @@ on:
       - codex/fix-quote-checkout-guard
     paths:
       - 't-rent-quote-checkout-guard/**'
+      - 'dist/t-rent-quote-checkout-guard-*.zip'
       - '.github/workflows/check-quote-checkout-guard.yml'
   pull_request:
     paths:
@@ -30,3 +31,11 @@ jobs:
           php -l t-rent-quote-checkout-guard/tests/quote-checkout-guard-check.php
       - name: Exercise quote guard logic
         run: php t-rent-quote-checkout-guard/tests/quote-checkout-guard-check.php
+      - name: Validate release archive
+        run: |
+          unzip -t dist/t-rent-quote-checkout-guard-1.0.1.zip
+          rm -rf /tmp/t-rent-quote-checkout-guard-release
+          mkdir -p /tmp/t-rent-quote-checkout-guard-release
+          unzip -q dist/t-rent-quote-checkout-guard-1.0.1.zip -d /tmp/t-rent-quote-checkout-guard-release
+          php -l /tmp/t-rent-quote-checkout-guard-release/t-rent-quote-checkout-guard/t-rent-quote-checkout-guard.php
+          grep -q 'Version: 1.0.1' /tmp/t-rent-quote-checkout-guard-release/t-rent-quote-checkout-guard/t-rent-quote-checkout-guard.php
