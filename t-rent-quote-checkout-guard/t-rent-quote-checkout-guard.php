@@ -2,7 +2,7 @@
 /**
  * Plugin Name: T-Rent tilbudsvakt for kassen
  * Description: Krever et gyldig og godkjent RnB-tilbud før utleieprodukter kan legges i handlekurven eller betales.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: T-Rent
  * Requires at least: 6.0
  * Requires PHP: 7.4
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 if (!defined('T_RENT_QUOTE_GUARD_VERSION')) {
-    define('T_RENT_QUOTE_GUARD_VERSION', '1.0.0');
+    define('T_RENT_QUOTE_GUARD_VERSION', '1.0.1');
 }
 
 /**
@@ -565,6 +565,24 @@ final class T_Rent_Quote_Checkout_Guard
     {
         $product = wc_get_product($product_id);
         $required = $product && $product->is_type('redq_rental');
+
+        /*
+         * A product can deliberately override the global quote-only setup.
+         * Respect RnB's local "Book Now" switch so sale/replacement products
+         * that share the rental product type can still be bought directly.
+         */
+        if (
+            $required
+            && sanitize_key((string) get_post_meta($product_id, 'rnb_settings_for_display', true)) === 'local'
+        ) {
+            $local_book_now = sanitize_key(
+                (string) get_post_meta($product_id, 'redq_rental_local_show_book_now', true)
+            );
+
+            if (in_array($local_book_now, ['open', 'yes', '1'], true)) {
+                $required = false;
+            }
+        }
 
         return (bool) apply_filters(
             't_rent_quote_checkout_guard_required',
