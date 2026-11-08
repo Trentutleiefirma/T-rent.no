@@ -1,0 +1,32 @@
+name: Check quote checkout guard
+
+on:
+  push:
+    branches:
+      - codex/fix-quote-checkout-guard
+    paths:
+      - 't-rent-quote-checkout-guard/**'
+      - '.github/workflows/check-quote-checkout-guard.yml'
+  pull_request:
+    paths:
+      - 't-rent-quote-checkout-guard/**'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php-version: ['7.4', '8.4']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          coverage: none
+      - name: Check PHP syntax
+        run: |
+          php -l t-rent-quote-checkout-guard/t-rent-quote-checkout-guard.php
+          php -l t-rent-quote-checkout-guard/tests/quote-checkout-guard-check.php
+      - name: Exercise quote guard logic
+        run: php t-rent-quote-checkout-guard/tests/quote-checkout-guard-check.php
