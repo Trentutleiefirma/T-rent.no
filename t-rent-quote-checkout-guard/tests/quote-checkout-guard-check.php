@@ -222,8 +222,21 @@ function tqcg_quote($quote_id, $status, $product_id, array $extra_meta = [])
 }
 
 $GLOBALS['tqcg_products'][494] = new TQCG_Product(494, 'redq_rental', 'Stubbefres');
+$GLOBALS['tqcg_products'][703] = new TQCG_Product(703, 'redq_rental', 'Slitasje borekronene');
+$GLOBALS['tqcg_products'][705] = new TQCG_Product(705, 'redq_rental', 'Kun forespørsel');
 $GLOBALS['tqcg_products'][780] = new TQCG_Product(780, 'redq_rental', 'Tilhenger');
 $GLOBALS['tqcg_products'][900] = new TQCG_Product(900, 'simple', 'Hansker');
+
+$GLOBALS['tqcg_post_meta'][703] = [
+    'rnb_settings_for_display' => 'local',
+    'redq_rental_local_show_request_quote' => 'closed',
+    'redq_rental_local_show_book_now' => 'open',
+];
+$GLOBALS['tqcg_post_meta'][705] = [
+    'rnb_settings_for_display' => 'local',
+    'redq_rental_local_show_request_quote' => 'open',
+    'redq_rental_local_show_book_now' => 'closed',
+];
 
 $guard = new T_Rent_Quote_Checkout_Guard();
 
@@ -284,9 +297,16 @@ tqcg_expect($result['valid'] === true, 'matching quote and account email authori
 $GLOBALS['tqcg_logged_in'] = false;
 $GLOBALS['tqcg_user_id'] = 0;
 $_POST = [];
+$passed = $guard->validate_add_to_cart(true, 703, 1, 0, [], []);
+tqcg_expect($passed === true, 'a local Book Now rental bypasses the quote guard');
+tqcg_expect(count($GLOBALS['tqcg_notices']) === 0, 'the direct-purchase product gets no quote error');
+
+$passed = $guard->validate_add_to_cart(true, 705, 1, 0, [], []);
+tqcg_expect($passed === false, 'a local quote-only rental remains protected');
+
 $passed = $guard->validate_add_to_cart(true, 494, 1, 0, [], []);
-tqcg_expect($passed === false, 'direct rental add-to-cart is blocked');
-tqcg_expect(count($GLOBALS['tqcg_notices']) === 1, 'direct add-to-cart receives one customer-facing error');
+tqcg_expect($passed === false, 'a global rental without a quote remains blocked');
+tqcg_expect(count($GLOBALS['tqcg_notices']) === 1, 'blocked rentals receive one customer-facing error');
 
 $_POST = ['order_type' => 'extend_order'];
 $passed = $guard->validate_add_to_cart(true, 494, 1, 0, [], []);
@@ -303,12 +323,16 @@ $cart = new TQCG_Cart(
             'product_id' => 494,
             'rental_data' => ['quote_id' => 990],
         ],
+        'local_direct' => [
+            'product_id' => 703,
+            'rental_data' => ['quote_id' => 0],
+        ],
         'ordinary' => [
             'product_id' => 900,
         ],
     ]
 );
 $invalid = tqcg_invoke($guard, 'invalid_cart_items', [$cart]);
-tqcg_expect(count($invalid) === 1 && $invalid[0]['cart_item_key'] === 'stale', 'persistent carts only flag the invalid rental line');
+tqcg_expect(count($invalid) === 1 && $invalid[0]['cart_item_key'] === 'stale', 'persistent carts ignore local direct-purchase products and flag only invalid quote-only rentals');
 
 fwrite(STDOUT, "All quote checkout guard checks passed.\n");
