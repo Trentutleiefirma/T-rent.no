@@ -1,0 +1,28 @@
+name: Check booking health
+on:
+  pull_request:
+    paths:
+      - 't-rent-booking-health/**'
+      - '.github/workflows/check-booking-health.yml'
+  push:
+    branches: [main, 'codex/booking-health-*']
+    paths:
+      - 't-rent-booking-health/**'
+      - '.github/workflows/check-booking-health.yml'
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ['7.4', '8.4']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+      - run: php -l t-rent-booking-health/t-rent-booking-health.php
+      - run: php t-rent-booking-health/tests/php-check.php
+      - run: node --check t-rent-booking-health/assets/booking-health.js
